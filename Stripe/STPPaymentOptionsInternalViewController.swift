@@ -497,6 +497,8 @@ class STPPaymentOptionsInternalViewController: STPCoreTableViewController, UITab
     func addCardViewControllerDidCancel(_ addCardViewController: STPAddCardViewController) {
         navigationController?.popViewController(animated: true)
     }
+    
+    func addCardViewControllerScanned(_ addCardViewController: STPAddCardViewController, didInputCardParams number: String, expYear: Int, expMonth: Int) {}
 
     @objc func addCardViewController(
         _ addCardViewController: STPAddCardViewController,
