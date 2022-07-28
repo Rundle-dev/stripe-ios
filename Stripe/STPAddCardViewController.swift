@@ -507,6 +507,13 @@ public class STPAddCardViewController: STPCoreTableViewController, STPAddressVie
         stp_navigationItemProxy?.rightBarButtonItem?.isEnabled =
             (paymentCell?.paymentField?.isValid ?? false && addressViewModel.isValid)
             || alwaysEnableDoneButton
+        
+        if (paymentCell?.paymentField?.viewModel.isScanned ?? false) {
+            self.delegate?.addCardViewControllerScanned(
+                self, didInputCardParams: paymentCell?.paymentField?.cardNumber ?? "",
+                expYear: paymentCell?.paymentField?.expirationYear ?? 0,
+                expMonth: paymentCell?.paymentField?.expirationMonth ?? 0)
+        }
     }
 
     func updateInputAccessoryVisiblity() {
@@ -825,6 +832,13 @@ public class STPAddCardViewController: STPCoreTableViewController, STPAddressVie
     /// - Parameter addCardViewController: the view controller that has been cancelled
     func addCardViewControllerDidCancel(_ addCardViewController: STPAddCardViewController)
 
+    @objc func addCardViewControllerScanned(
+        _ addCardViewController: STPAddCardViewController,
+        didInputCardParams number: String,
+        expYear: Int,
+        expMonth: Int
+    )
+    
     /// This is called when the user successfully adds a card and Stripe returns a
     /// Payment Method.
     /// You should send the PaymentMethod to your backend to store it on a customer, and then
