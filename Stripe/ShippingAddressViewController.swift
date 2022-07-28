@@ -23,22 +23,35 @@ class ShippingAddressViewController: UIViewController {
     /// Always a valid address or nil.
     var shippingAddressDetails: PaymentSheet.ShippingAddressDetails? {
         let a = addressSection
-        if a.isValidAddress {
-            let address = PaymentSheet.Address(
-                city: a.city?.text,
-                country: a.selectedCountryCode,
-                line1: a.line1?.text,
-                line2: a.line2?.text,
-                postalCode: a.postalCode?.text,
-                state: a.state?.text
-            )
-            return .init(address: address)
-        } else {
+        guard case .valid = a.validationState else {
             return nil
         }
+        let address = PaymentSheet.Address(
+            city: a.city?.text.nonEmpty,
+            country: a.selectedCountryCode,
+            line1: a.line1?.text.nonEmpty,
+            line2: a.line2?.text.nonEmpty,
+            postalCode: a.postalCode?.text.nonEmpty,
+            state: a.state?.text.nonEmpty
+        )
+        return .init(
+            address: address,
+            name: a.name?.text.nonEmpty,
+            phone: a.phone?.phoneNumber?.string(as: .e164).nonEmpty
+        )
     }
     
-    private var shouldDisplayAutoComplete = true
+    private lazy var shouldDisplayAutoComplete: Bool = {
+        // Only display auto complete if defaults are empty
+        return AddressSectionElement.Defaults(from: configuration.shippingAddress.defaultValues) == .empty
+    }()
+    
+    private var latestError: Error? {
+        didSet {
+            errorLabel.text = latestError?.localizedDescription
+            errorLabel.isHidden = latestError == nil
+        }
+    }
     
     // MARK: - Views
     lazy var navigationBar: SheetNavigationBar = {
@@ -51,7 +64,7 @@ class ShippingAddressViewController: UIViewController {
     }()
     lazy var button: ConfirmButton = {
         let button = ConfirmButton(
-            state: addressSection.isValidAddress ? .enabled : .disabled,
+            state: addressSection.validationState.isValid ? .enabled : .disabled,
             callToAction: .custom(title: .Localized.continue),
             appearance: configuration.appearance
         ) { [weak self] in
@@ -66,6 +79,11 @@ class ShippingAddressViewController: UIViewController {
     }()
     lazy var formView: UIView = {
         return formElement.view
+    }()
+    lazy var errorLabel: UILabel = {
+        let label = ElementsUI.makeErrorLabel()
+        label.isHidden = true
+        return label
     }()
     
     // MARK: - Elements
@@ -111,7 +129,7 @@ class ShippingAddressViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = configuration.appearance.colors.background
         
-        let stackView = UIStackView(arrangedSubviews: [headerLabel, formView, button])
+        let stackView = UIStackView(arrangedSubviews: [headerLabel, formView, errorLabel, button])
         stackView.directionalLayoutMargins = PaymentSheetUI.defaultMargins
         stackView.isLayoutMarginsRelativeArrangement = true
         stackView.spacing = PaymentSheetUI.defaultPadding
@@ -146,6 +164,11 @@ extension ShippingAddressViewController {
     private func displayAutoCompleteIfNeeded() {
         // Only display auto complete if we haven't yet and line 1 is editing
         guard shouldDisplayAutoComplete, (addressSection.line1?.isEditing ?? false) else {
+            return
+        }
+        
+        // Only display auto complete if current country selected is enabled for auto complete
+        guard AutoCompleteConstants.supportedCountries.contains(addressSection.selectedCountryCode) else {
             return
         }
         
@@ -201,7 +224,8 @@ extension ShippingAddressViewController: BottomSheetContentViewController {
 @available(iOSApplicationExtension, unavailable)
 extension ShippingAddressViewController: ElementDelegate {
     func didUpdate(element: Element) {
-        let enabled = addressSection.isValidAddress
+        self.latestError = nil // clear error on new input
+        let enabled = addressSection.validationState.isValid
         button.update(state: enabled ? .enabled : .disabled, animated: true)
         displayAutoCompleteIfNeeded()
     }
@@ -217,10 +241,19 @@ extension ShippingAddressViewController: AutoCompleteViewControllerDelegate {
             return
         }
         
-        if let selectedCountryIndex = addressSection.country.items.firstIndex(where: {$0.pickerDisplayName == address.country}) {
-            addressSection.country.select(index: selectedCountryIndex)
+        guard let selectedCountryIndex = addressSection.country.items.firstIndex(where: {$0.pickerDisplayName == address.country}) else {
+            // Merchant doesn't support shipping to selected country
+            if let country = address.country {
+                let errorMsg = String.Localized.does_not_support_shipping_to(merchantDisplayName: configuration.merchantDisplayName,
+                                                                             country: country)
+                latestError = NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+                shouldDisplayAutoComplete = true // re-enable auto complete after this error
+            }
+            
+            return
         }
         
+        addressSection.country.select(index: selectedCountryIndex)
         addressSection.line1?.setText(address.line1 ?? "")
         addressSection.city?.setText(address.city ?? "")
         addressSection.postalCode?.setText(address.postalCode ?? "")
@@ -236,6 +269,7 @@ extension AddressSectionElement.Defaults {
     init(from shippingAddressDetails: PaymentSheet.ShippingAddressDetails) {
         self.init(
             name: shippingAddressDetails.name,
+            phone: shippingAddressDetails.phone,
             city: shippingAddressDetails.address.city,
             country: shippingAddressDetails.address.country,
             line1: shippingAddressDetails.address.line1,
@@ -261,8 +295,7 @@ extension AddressSectionElement.AdditionalFields {
 
         self.init(
             name: config(from: additionalFields.name),
-            phone: config(from: additionalFields.phone),
-            company: config(from: additionalFields.company)
+            phone: config(from: additionalFields.phone)
         )
     }
 }

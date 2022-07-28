@@ -52,9 +52,10 @@ extension IdentityVerificationSheetError: CustomDebugStringConvertible {
     
     /// Serializes this error
     /// - Returns: an error with a domain and code
-    public func serializeForLogging() -> [String : Any] {
+    public func analyticLoggableSerializeForLogging() -> [String : Any] {
         return [
-            "domain": "Stripe.\(IdentityVerificationSheetError.self)",
-            "code": errorCode]
+            "domain": (self as NSError).domain,
+            "code": errorCode
+        ]
     }
 }

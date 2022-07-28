@@ -1,9 +1,23 @@
+## 22.6.0 2022-07-05
+### PaymentSheet
+* [Added] PaymentSheet now supports Link payment method.
+* [Changed] Change behavior of Afterpay/Clearpay: Charge in 3 for GB, FR, and ES
+
+### STPCardFormView
+* [Changed] Postal code is no longer collected for billing addresses in Japan.
+
+### Identity
+* [Added] The ability to capture Selfie images in the native component flow.
+* [Fixed] Fixed an issue where the welcome and confirmation screens were not correctly decoding non-ascii characters.
+* [Fixed] Fixed an issue where, if a manually uploaded document could not be decoded on the server, there was no way to select a new image to upload.
+* [Fixed] Fixed an issue where the IdentityVerificationSheet completion block was called early when manually uploading a document image instead of using auto-capture.
+
 ## 22.5.1 2022-06-21
 * [Fixed] Fixed an issue with `STPPaymentHandler` where returning an app redirect could cause a crash.
 
 ## 22.5.0 2022-06-13
 ### PaymentSheet
-* [Added] You can now use `PaymentSheet.ApplePayConfiguration.paymentSummaryItems` to directly configure the payment summary items displayed in the Apple Pay sheet. This is useful for recurring payments. 
+* [Added] You can now use `PaymentSheet.ApplePayConfiguration.paymentSummaryItems` to directly configure the payment summary items displayed in the Apple Pay sheet. This is useful for recurring payments.
 
 ## 22.4.0 2022-05-23
 ### PaymentSheet

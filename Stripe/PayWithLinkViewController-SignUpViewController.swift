@@ -17,7 +17,6 @@ extension PayWithLinkViewController {
     /// For internal SDK use only
     @objc(STP_Internal_PayWithLinkSignUpViewController)
     final class SignUpViewController: BaseViewController {
-        private let context: Context
 
         private let viewModel: SignUpViewModel
 
@@ -48,16 +47,12 @@ extension PayWithLinkViewController {
             return label
         }()
 
-        private lazy var emailElement: LinkEmailElement = {
-            return LinkEmailElement(defaultValue: viewModel.emailAddress)
-        }()
+        private lazy var emailElement = LinkEmailElement(defaultValue: viewModel.emailAddress)
 
         private lazy var phoneNumberElement = PhoneNumberElement(
-            defaultValue: context.configuration.defaultBillingDetails.phone,
-            defaultCountry: context.configuration.defaultBillingDetails.address.country
+            defaultCountryCode: context.configuration.defaultBillingDetails.address.country,
+            defaultPhoneNumber: context.configuration.defaultBillingDetails.phone
         )
-
-        private lazy var phoneNumberSection = SectionElement(elements: [phoneNumberElement])
 
         private lazy var nameElement = TextFieldElement(
             configuration: TextFieldElement.NameConfiguration(
@@ -65,6 +60,10 @@ extension PayWithLinkViewController {
                 defaultValue: viewModel.legalName
             )
         )
+
+        private lazy var emailSection = SectionElement(elements: [emailElement])
+
+        private lazy var phoneNumberSection = SectionElement(elements: [phoneNumberElement])
 
         private lazy var nameSection = SectionElement(elements: [nameElement])
 
@@ -99,7 +98,7 @@ extension PayWithLinkViewController {
             let stackView = UIStackView(arrangedSubviews: [
                 titleLabel,
                 subtitleLabel,
-                emailElement.view,
+                emailSection.view,
                 phoneNumberSection.view,
                 nameSection.view,
                 legalTermsView,
@@ -123,14 +122,13 @@ extension PayWithLinkViewController {
             linkAccount: PaymentSheetLinkAccount?,
             context: Context
         ) {
-            self.context = context
             self.viewModel = SignUpViewModel(
                 configuration: context.configuration,
                 accountService: LinkAccountService(apiClient: context.configuration.apiClient),
                 linkAccount: linkAccount,
                 country: context.intent.countryCode
             )
-            super.init(nibName: nil, bundle: nil)
+            super.init(context: context)
         }
 
         required init?(coder: NSCoder) {
@@ -269,7 +267,7 @@ extension PayWithLinkViewController.SignUpViewController: ElementDelegate {
         switch emailElement.validationState {
         case .valid:
             viewModel.emailAddress = emailElement.emailAddressString
-        case .invalid(_):
+        case .invalid:
             viewModel.emailAddress = nil
         }
 
@@ -278,7 +276,7 @@ extension PayWithLinkViewController.SignUpViewController: ElementDelegate {
         switch nameElement.validationState {
         case .valid:
             viewModel.legalName = nameElement.text
-        case .invalid(_):
+        case .invalid:
             viewModel.legalName = nil
         }
     }

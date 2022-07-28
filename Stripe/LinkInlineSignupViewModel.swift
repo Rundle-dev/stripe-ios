@@ -25,7 +25,7 @@ final class LinkInlineSignupViewModel {
 
     private let accountService: LinkAccountServiceProtocol
 
-    private let accountLookupDebouncer = OperationDebouncer(debounceTime: .milliseconds(500))
+    private let accountLookupDebouncer = OperationDebouncer(debounceTime: LinkUI.accountLookupDebounceTime)
 
     private let country: String?
 
@@ -106,6 +106,18 @@ final class LinkInlineSignupViewModel {
         }
 
         return !legalName.isBlank
+    }
+
+    var requiresPhoneNumberCollection: Bool {
+        return linkAccount?.sessionState == .requiresSignUp
+    }
+
+    var phoneNumberProvided: Bool {
+        guard let phoneNumber = phoneNumber else {
+            return false
+        }
+
+        return phoneNumber.isComplete
     }
 
     var shouldShowEmailField: Bool {
@@ -195,6 +207,7 @@ private extension LinkInlineSignupViewModel {
         
         guard let emailAddress = emailAddress else {
             accountLookupDebouncer.cancel()
+            isLookingUpLinkAccount = false
             return
         }
 

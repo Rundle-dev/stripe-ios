@@ -32,8 +32,11 @@ import UIKit
     }()
     public private(set) var isEditing: Bool = false
     private(set) var didReceiveAutofill: Bool = false
-    public var validationState: ValidationState {
-        return configuration.validate(text: text, isOptional: configuration.isOptional)
+    public var validationState: ElementValidationState {
+        return .init(
+            from: configuration.validate(text: text, isOptional: configuration.isOptional),
+            isUserEditing: isEditing
+        )
     }
     
     public var inputAccessoryView: UIView? {
@@ -60,8 +63,7 @@ import UIKit
     }
 
     struct ViewModel {
-        let floatingPlaceholder: String?
-        let staticPlaceholder: String? // optional placeholder that does not float/stays in the underlying text field
+        let placeholder: String
         let accessibilityLabel: String
         let attributedText: NSAttributedString
         let keyboardProperties: KeyboardProperties
@@ -80,12 +82,11 @@ import UIKit
             }
         }()
         return ViewModel(
-            floatingPlaceholder: configuration.placeholderShouldFloat ? placeholder : nil,
-            staticPlaceholder: configuration.placeholderShouldFloat ? nil : placeholder,
+            placeholder: placeholder,
             accessibilityLabel: configuration.accessibilityLabel,
             attributedText: configuration.makeDisplayText(for: text),
             keyboardProperties: configuration.keyboardProperties(for: text),
-            validationState: validationState,
+            validationState: configuration.validate(text: text, isOptional: configuration.isOptional),
             logo: configuration.logo(for: text),
             shouldShowClearButton: configuration.shouldShowClearButton
         )
@@ -137,16 +138,6 @@ extension TextFieldElement: Element {
             delegate?.continueToNextField(element: self)
         }
         return didResign
-    }
-
-    public var errorText: String? {
-        guard
-            case .invalid(let error) = validationState,
-            error.shouldDisplay(isUserEditing: isEditing)
-        else {
-            return nil
-        }
-        return error.localizedDescription
     }
 
     public var subLabelText: String? {

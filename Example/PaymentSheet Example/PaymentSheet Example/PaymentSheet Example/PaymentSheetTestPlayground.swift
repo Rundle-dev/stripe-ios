@@ -50,12 +50,14 @@ class PaymentSheetTestPlayground: UIViewController {
         case usd
         case eur
         case aud
+        case gbp
     }
 
     enum MerchantCountryCode: String, CaseIterable {
         case US
         case GB
         case AU
+        case FR
     }
 
     enum IntentMode: String, CaseIterable {
@@ -147,8 +149,8 @@ class PaymentSheetTestPlayground: UIViewController {
         }
         if shippingInfoSelector.selectedSegmentIndex == 1 {
             configuration.shippingAddress.defaultValues = .init(address: defaultAddress, name: "Jane Doe")
-            configuration.shippingAddress.allowedCountries = ["US"]
-            configuration.shippingAddress.additionalFields = .init(name: .required, phone: .optional, company: .optional)
+            configuration.shippingAddress.allowedCountries = ["US", "CA", "MX", "GB"]
+            configuration.shippingAddress.additionalFields = .init(name: .required, phone: .optional)
         }
         if allowsDelayedPaymentMethodsSelector.selectedSegmentIndex == 0 {
             configuration.allowsDelayedPaymentMethods = true
@@ -266,7 +268,6 @@ class PaymentSheetTestPlayground: UIViewController {
     func updateButtons() {
         // Update the shipping address
         if let shippingAddressDetails = paymentSheetFlowController?.shippingAddressDetails {
-            print(shippingAddressDetails.localizedDescription)
             let shippingText = shippingAddressDetails.localizedDescription.replacingOccurrences(of: "\n", with: ", ")
             shippingAddressButton.setTitle(shippingText, for: .normal)
         } else {
@@ -495,6 +496,6 @@ extension PaymentSheet.ShippingAddressDetails {
         postalAddress.state = address.state ?? ""
         postalAddress.country = address.country ?? ""
 
-        return formatter.string(from: postalAddress)
+        return [name, formatter.string(from: postalAddress), phone].compactMap { $0 }.joined(separator: "\n")
     }
 }

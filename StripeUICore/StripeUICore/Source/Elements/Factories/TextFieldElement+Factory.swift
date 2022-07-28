@@ -98,26 +98,19 @@ import UIKit
     
     // MARK: - Phone number
     struct PhoneNumberConfiguration: TextFieldElementConfiguration {
-        static let incompleteError = Error.incomplete(localizedDescription:
-                                                        STPLocalizedString("Incomplete phone number", "Error description for incomplete phone number"))
-        static let invalidError = Error.invalid(localizedDescription:
-                                                    STPLocalizedString("Unable to parse phone number", "Error string when we can't parse a phone number"))
+        static let incompleteError = Error.incomplete(localizedDescription: .Localized.incomplete_phone_number)
+        static let invalidError = Error.invalid(localizedDescription: .Localized.invalid_phone_number)
+        public let label: String = .Localized.phone
         
-        public let label: String
-        public let regionCode: String?
-        public let placeholderShouldFloat: Bool = false
+        /// - Note: Country code helps us format the phone number
+        public let countryCodeProvider: () -> String
+        public let defaultValue: String?
         public let isOptional: Bool
         
-        public init(regionCode: String?, isOptional: Bool = false) {
-            self.regionCode = regionCode
+        public init(defaultValue: String? = nil, isOptional: Bool = false, countryCodeProvider: @escaping () -> String) {
+            self.countryCodeProvider = countryCodeProvider
+            self.defaultValue = defaultValue
             self.isOptional = isOptional
-            self.label = {
-                if let regionCode = regionCode,
-                   let metadata = PhoneNumber.Metadata.metadata(for: regionCode) {
-                    return metadata.sampleFilledPattern
-                }
-                return String.Localized.phone
-            }()
         }
         
         public func validate(text: String, isOptional: Bool) -> TextFieldElement.ValidationState {
@@ -125,14 +118,12 @@ import UIKit
                 return isOptional ? .valid : .invalid(Error.empty)
             }
             
-            if let phoneNumber = PhoneNumber(number: text, countryCode: regionCode) {
+            if let phoneNumber = PhoneNumber(number: text, countryCode: countryCodeProvider()) {
                 return phoneNumber.isComplete ? .valid :
                     .invalid(PhoneNumberConfiguration.incompleteError)
             } else {
-                // assume user has entered a format or for a region
-                // the SDK doesn't know about
-                // return valid as long as it's non-empty and let the server
-                // decide
+                // Assume user has entered a format or for a region the SDK doesn't know about.
+                // Return valid as long as it's non-empty and let the server decide.
                 return .valid
             }
         }
@@ -142,27 +133,15 @@ import UIKit
         }
         
         public var disallowedCharacters: CharacterSet {
-            if regionCode?.isEmpty ?? true {
-                return CharacterSet.stp_asciiDigit.union(CharacterSet(charactersIn: "+")).inverted // allow a + for custom country code
-            } else {
-                return CharacterSet.stp_asciiDigit.inverted
-            }
+            return .stp_asciiDigit.inverted
         }
         
         public func makeDisplayText(for text: String) -> NSAttributedString {
-            if let phoneNumber = PhoneNumber(number: text, countryCode: regionCode) {
+            if let phoneNumber = PhoneNumber(number: text, countryCode: countryCodeProvider()) {
                 return NSAttributedString(string: phoneNumber.string(as: .national))
             } else {
                 return NSAttributedString(string: text)
             }
         }
-    }
-    
-    // MARK: - Company name
-    
-    struct CompanyConfiguration: TextFieldElementConfiguration {
-        public let label: String = .Localized.company
-        public let isOptional: Bool
-        public let defaultValue: String?
     }
 }

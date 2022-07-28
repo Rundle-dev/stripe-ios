@@ -18,10 +18,15 @@ final class ErrorViewController: IdentityFlowViewController {
     private let errorView = ErrorView()
     let model: Model
 
-    init(sheetController: VerificationSheetControllerProtocol,
-         error model: Model) {
+    init(
+        sheetController: VerificationSheetControllerProtocol,
+        error model: Model,
+        filePath: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         self.model = model
         super.init(sheetController: sheetController, analyticsScreenName: .error)
+        logError(filePath: filePath, line: line)
     }
 
     required init?(coder: NSCoder) {
@@ -93,6 +98,17 @@ private extension ErrorViewController {
             // Go back to the previous view
             navigationController?.popViewController(animated: true)
         }
+    }
+
+    func logError(filePath: StaticString, line: UInt) {
+        guard case let .error(error) = model else {
+            return
+        }
+        sheetController?.analyticsClient.logGenericError(
+            error: error,
+            filePath: filePath,
+            line: line
+        )
     }
 }
 

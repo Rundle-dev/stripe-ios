@@ -138,7 +138,10 @@ final class VerificationSheetFlowControllerTest: XCTestCase {
             sheetController: mockSheetController,
             completion: { nextVC in
                 XCTAssertIs(nextVC, ErrorViewController.self)
-                XCTAssertEqual((nextVC as? ErrorViewController)?.model, .error(NSError.stp_genericConnectionError()))
+                XCTAssertEqual(
+                    (nextVC as? ErrorViewController)?.model,
+                    .error(VerificationSheetFlowControllerError.noScreenForRequirements([]))
+                )
                 exp.fulfill()
             }
         )
@@ -158,6 +161,42 @@ final class VerificationSheetFlowControllerTest: XCTestCase {
                 XCTAssertEqual(
                     (nextVC as? ErrorViewController)?.model,
                     .error(VerificationSheetFlowControllerError.missingRequiredInput([.idDocumentType]))
+                )
+                exp.fulfill()
+            }
+        )
+        wait(for: [exp], timeout: 1)
+    }
+
+    func testNoSelfieConfigError() throws {
+        let exp = expectation(description: "testNoSelfieConfigError")
+        try nextViewController(
+            missingRequirements: [.face],
+            staticContentResult: .success(try VerificationPageMock.noSelfie.make()),
+            completion: { nextVC in
+                XCTAssertIs(nextVC, ErrorViewController.self)
+                XCTAssertEqual(
+                    (nextVC as? ErrorViewController)?.model,
+                    .error(VerificationSheetFlowControllerError.missingSelfieConfig)
+                )
+                exp.fulfill()
+            }
+        )
+        wait(for: [exp], timeout: 1)
+    }
+
+    func testMLModelsNeverLoadedError() throws {
+        let exp = expectation(description: "testMLModelsNeverLoadedError")
+
+        try nextViewController(
+            missingRequirements: [.face],
+            completion: { nextVC in
+                XCTAssertIs(nextVC, ErrorViewController.self)
+                XCTAssertEqual(
+                    (nextVC as? ErrorViewController)?.model,
+                    .error(VerificationSheetFlowControllerError.unknown(
+                        IdentityMLModelLoaderError.mlModelNeverLoaded
+                    ))
                 )
                 exp.fulfill()
             }
@@ -381,6 +420,7 @@ final class VerificationSheetFlowControllerTest: XCTestCase {
 private extension VerificationSheetFlowControllerTest {
     func nextViewController(
         missingRequirements: Set<StripeAPI.VerificationPageFieldType>,
+        staticContentResult: Result<StripeAPI.VerificationPage, Error> = .success(try! VerificationPageMock.response200.make()),
         isSubmitted: Bool = false,
         completion: @escaping (UIViewController) -> Void
     ) throws {
@@ -391,7 +431,7 @@ private extension VerificationSheetFlowControllerTest {
         : try VerificationPageDataMock.noErrors.make()
 
         flowController.nextViewController(
-            staticContentResult: .success(try VerificationPageMock.response200.make()),
+            staticContentResult: staticContentResult,
             updateDataResult: .success(dataResponse),
             sheetController: mockSheetController,
             completion: completion

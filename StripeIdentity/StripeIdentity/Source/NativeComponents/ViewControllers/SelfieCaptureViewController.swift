@@ -193,7 +193,7 @@ final class SelfieCaptureViewController: IdentityFlowViewController {
         cameraSession: CameraSessionProtocol,
         selfieUploader: SelfieUploaderProtocol,
         anyFaceScanner: AnyFaceScanner,
-        concurrencyManager: ImageScanningConcurrencyManagerProtocol = ImageScanningConcurrencyManager(),
+        concurrencyManager: ImageScanningConcurrencyManagerProtocol? = nil,
         cameraPermissionsManager: CameraPermissionsManagerProtocol = CameraPermissionsManager.shared,
         appSettingsHelper: AppSettingsHelperProtocol = AppSettingsHelper.shared,
         notificationCenter: NotificationCenter = .default
@@ -206,7 +206,7 @@ final class SelfieCaptureViewController: IdentityFlowViewController {
                 autocaptureTimeout: TimeInterval(milliseconds: apiConfig.autocaptureTimeout),
                 cameraSession: cameraSession,
                 scanner: anyFaceScanner,
-                concurrencyManager: concurrencyManager,
+                concurrencyManager: concurrencyManager ?? ImageScanningConcurrencyManager(analyticsClient: sheetController.analyticsClient),
                 cameraPermissionsManager: cameraPermissionsManager,
                 appSettingsHelper: appSettingsHelper
             ),
@@ -250,7 +250,10 @@ extension SelfieCaptureViewController {
             ),
             viewModel: flowViewModel
         )
-        selfieCaptureView.configure(with: selfieCaptureViewModel)
+        selfieCaptureView.configure(
+            with: selfieCaptureViewModel,
+            analyticsClient: sheetController?.analyticsClient
+        )
     }
 
     func startSampleTimer() {
@@ -277,6 +280,7 @@ extension SelfieCaptureViewController {
     ) {
         imageScanningSession.setStateSaving(faceCaptureData)
         self.sheetController?.saveSelfieFileDataAndTransition(
+            from: analyticsScreenName,
             selfieUploader: selfieUploader,
             capturedImages: faceCaptureData,
             trainingConsent: consentSelection == true
@@ -333,6 +337,20 @@ extension SelfieCaptureViewController: ImageScanningSessionDelegate {
 
         // Increment analytics counter
         sheetController?.analyticsClient.countDidStartSelfieScan()
+    }
+
+    func imageScanningSessionWillStopScanning(_ scanningSession: SelfieImageScanningSession) {
+        scanningSession.concurrencyManager.getPerformanceMetrics(completeOn: .main) { [weak sheetController] averageFPS, numFramesScanned in
+            guard let averageFPS = averageFPS else { return }
+            sheetController?.analyticsClient.logAverageFramesPerSecond(
+                averageFPS: averageFPS,
+                numFrames: numFramesScanned,
+                scannerName: .selfie
+            )
+        }
+        sheetController?.analyticsClient.logModelPerformance(
+            mlModelMetricsTrackers: scanningSession.scanner.mlModelMetricsTrackers
+        )
     }
 
     func imageScanningSessionDidStopScanning(_ scanningSession: SelfieImageScanningSession) {

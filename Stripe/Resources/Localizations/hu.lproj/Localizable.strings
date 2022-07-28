@@ -265,6 +265,9 @@
 /* Title for screen when data is still loading from the network. */
 "Loading…" = "Betöltés...";
 
+/* Title of the logout action. */
+"Log out of Link" = "Kijelentkezés a Link";
+
 /* label for text field to enter card expiry */
 "MM / YY" = "HH / ÉÉ";
 
@@ -321,6 +324,9 @@
 
 /* Label describing the benefit of signing up for Link. Pay faster at {Merchant Name} and thousands of merchants. e.g, 'Pay faster at Example, Inc. and thousands of merchants.' */
 "Pay faster at %@ and thousands of merchants." = "Gyorsabban fizethet a(z) %@ számára és még ezernyi kereskedőnek.";
+
+/* This shows the message on Buy Now Pay Later LPM, afterpay.  After the word "with" an Afterpay logo is displayed. <img/> can be moved to move the logo in the string. */
+"Pay in <num_installments/> interest-free payments of <installment_price/> with <img/>" = "Fizetés <num_installments/>, egyenként <installment_price/> összegű kamatmentes részletben <img/> használatával";
 
 /* Klarna pay later copy */
 "Pay later with Klarna." = "Fizetés később Klarnával.";
@@ -484,6 +490,12 @@
 /* An error message displayed when the IBAN country code is not supported. */
 "The IBAN you entered is invalid, \"%@\" is not a supported country code." = "A beírt IBAN-szám érvénytelen, a(z) „%@” nem támogatott országkód.";
 
+/* Error message shown when the user enters an expired verification code. */
+"The provided verification code has expired." = "A megadott ellenőrző kód lejárt.";
+
+/* Error message shown when the user enters an incorrect verification code. */
+"The provided verification code is incorrect." = "A megadott ellenőrző kód hibás.";
+
 /* Error when the seleted payment method is not available (eg attempted to use 3D Secure on a card that does not support it). */
 "The selected payment method is not available." = "A kiválasztott fizetési mód nem érhető el.";
 
@@ -498,6 +510,9 @@
 
 /* Error when the user hasn&apos;t allowed the current app to access the camera when scanning a payment card. &apos;Settings&apos; is the localized name of the iOS Settings app. */
 "To scan your card, allow camera access in Settings." = "A kártya beolvasásához engedélyezze a kamerához való hozzáférést a Beállításokban.";
+
+/* Error message shown when the user enters an incorrect verification code too many times. */
+"Too many attempts. Please try again in a few minutes." = "Túl sok kísérlet. Próbálja meg újra néhány perc múlva.";
 
 /* Payment Method type brand name */
 "UPI" = "UPI";

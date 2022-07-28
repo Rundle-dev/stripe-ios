@@ -44,6 +44,13 @@ final class Link2FAView: UIView {
         }
     }
 
+    var errorMessage: String? {
+        didSet {
+            errorLabel.text = errorMessage
+            errorLabel.setHiddenIfNecessary(errorMessage == nil)
+        }
+    }
+
     private lazy var header: Header = {
         let header = Header()
         header.closeButton.addTarget(self, action: #selector(didSelectCancel), for: .touchUpInside)
@@ -78,6 +85,23 @@ final class Link2FAView: UIView {
         return codeField
     }()
 
+    private let errorLabel: UILabel = {
+        let label = UILabel()
+        label.font = LinkUI.font(forTextStyle: .detail)
+        label.textColor = .systemRed
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.isHidden = true
+        return label
+    }()
+
+    private lazy var codeFieldContainer: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [codeField, errorLabel])
+        stackView.axis = .vertical
+        stackView.spacing = LinkUI.smallContentSpacing
+        return stackView
+    }()
+
     private lazy var resendCodeButton: Button = {
         let button = Button(configuration: .linkBordered(), title: STPLocalizedString(
             "Resend code",
@@ -106,6 +130,9 @@ final class Link2FAView: UIView {
 
     @objc
     func oneTimeCodeFieldChanged(_ sender: OneTimeCodeTextField) {
+        // Clear error message when the field changes.
+        errorMessage = nil
+
         if sender.isComplete {
             delegate?.link2FAView(self, didEnterCode: sender.value)
         }
@@ -136,14 +163,14 @@ private extension Link2FAView {
                 header,
                 headingLabel,
                 bodyLabel,
-                codeField,
+                codeFieldContainer,
                 resendCodeButton
             ]
         case .embedded:
             return [
                 headingLabel,
                 bodyLabel,
-                codeField,
+                codeFieldContainer,
                 logoutView,
                 resendCodeButton
             ]
@@ -162,7 +189,7 @@ private extension Link2FAView {
         // Spacing
         stackView.setCustomSpacing(Constants.edgeMargin, after: header)
         stackView.setCustomSpacing(LinkUI.extraLargeContentSpacing, after: bodyLabel)
-        stackView.setCustomSpacing(LinkUI.largeContentSpacing, after: codeField)
+        stackView.setCustomSpacing(LinkUI.largeContentSpacing, after: codeFieldContainer)
 
         addSubview(stackView)
 
@@ -174,8 +201,8 @@ private extension Link2FAView {
             stackView.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
 
             // OTC field
-            codeField.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
-            codeField.trailingAnchor.constraint(equalTo: stackView.trailingAnchor),
+            codeFieldContainer.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
+            codeFieldContainer.trailingAnchor.constraint(equalTo: stackView.trailingAnchor),
         ]
 
         if mode.requiresModalPresentation {

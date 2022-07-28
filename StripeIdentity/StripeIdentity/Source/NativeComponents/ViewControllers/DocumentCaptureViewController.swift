@@ -231,7 +231,7 @@ final class DocumentCaptureViewController: IdentityFlowViewController {
         cameraPermissionsManager: CameraPermissionsManagerProtocol = CameraPermissionsManager.shared,
         documentUploader: DocumentUploaderProtocol,
         anyDocumentScanner: AnyDocumentScanner,
-        concurrencyManager: ImageScanningConcurrencyManagerProtocol = ImageScanningConcurrencyManager(),
+        concurrencyManager: ImageScanningConcurrencyManagerProtocol? = nil,
         appSettingsHelper: AppSettingsHelperProtocol = AppSettingsHelper.shared
     ) {
         self.init(
@@ -244,7 +244,7 @@ final class DocumentCaptureViewController: IdentityFlowViewController {
                 autocaptureTimeout: TimeInterval(milliseconds: apiConfig.autocaptureTimeout),
                 cameraSession: cameraSession,
                 scanner: anyDocumentScanner,
-                concurrencyManager: concurrencyManager,
+                concurrencyManager: concurrencyManager ?? ImageScanningConcurrencyManager(analyticsClient: sheetController.analyticsClient),
                 cameraPermissionsManager: cameraPermissionsManager,
                 appSettingsHelper: appSettingsHelper
             ),
@@ -333,6 +333,7 @@ final class DocumentCaptureViewController: IdentityFlowViewController {
         lastImage: UIImage
     ) {
         sheetController?.saveDocumentFileDataAndTransition(
+            from: analyticsScreenName,
             documentUploader: documentUploader
         ) { [weak self] in
             self?.imageScanningSession.setStateScanned(
@@ -400,6 +401,20 @@ extension DocumentCaptureViewController: ImageScanningSessionDelegate {
 
         // Increment analytics counter
         sheetController?.analyticsClient.countDidStartDocumentScan(for: documentSide)
+    }
+
+    func imageScanningSessionWillStopScanning(_ scanningSession: DocumentImageScanningSession) {
+        scanningSession.concurrencyManager.getPerformanceMetrics(completeOn: .main) { [weak sheetController] averageFPS, numFramesScanned in
+            guard let averageFPS = averageFPS else { return }
+            sheetController?.analyticsClient.logAverageFramesPerSecond(
+                averageFPS: averageFPS,
+                numFrames: numFramesScanned,
+                scannerName: .document
+            )
+        }
+        sheetController?.analyticsClient.logModelPerformance(
+            mlModelMetricsTrackers: scanningSession.scanner.mlModelMetricsTrackers
+        )
     }
 
     func imageScanningSessionDidStopScanning(_ scanningSession: DocumentImageScanningSession) {

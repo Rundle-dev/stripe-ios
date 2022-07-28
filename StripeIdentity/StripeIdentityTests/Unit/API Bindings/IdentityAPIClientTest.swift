@@ -26,8 +26,6 @@ final class IdentityAPIClientTest: APIStubbedTestCase {
             verificationSessionId: IdentityAPIClientTest.mockId,
             ephemeralKeySecret: IdentityAPIClientTest.mockEAK
         )
-        // TODO(mludowise|IDPROD-4030): Stop overriding version when v2 is production ready
-        apiClient.apiVersion = 2
         stubClient()
 
         exp = expectation(description: "Request completed")
@@ -171,7 +169,7 @@ final class IdentityAPIClientTest: APIStubbedTestCase {
             fileName: "filename"
         ).observe { result in
             switch result {
-            case .success(let response):
+            case .success((let response, _)):
                 XCTAssertEqual(response, mockResponse)
             case .failure(let error):
                 XCTFail("Request returned error \(error)")

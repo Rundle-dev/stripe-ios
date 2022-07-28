@@ -58,13 +58,14 @@ final class SelfieScanningView: UIView {
             )
         }
 
-        static var consentCheckboxTheme: ElementsUITheme {
+        static func consentCheckboxTheme(tintColor: UIColor) -> ElementsUITheme {
             var theme = ElementsUITheme.default
             theme.colors.bodyText = IdentityUI.textColor
             theme.colors.secondaryText = IdentityUI.textColor
             theme.fonts.caption = IdentityUI.preferredFont(forTextStyle: .caption1)
             theme.fonts.footnote = IdentityUI.preferredFont(forTextStyle: .footnote)
             theme.fonts.footnoteEmphasis = IdentityUI.preferredFont(forTextStyle: .footnote, weight: .medium)
+            theme.colors.primary = tintColor
             return theme
         }
     }
@@ -139,8 +140,8 @@ final class SelfieScanningView: UIView {
 
     // MARK: Consent
 
-    private lazy var consentCheckboxButton: CheckboxButton = {
-        let checkbox = CheckboxButton(theme: Styling.consentCheckboxTheme)
+    private(set) lazy var consentCheckboxButton: CheckboxButton = {
+        let checkbox = CheckboxButton(theme: Styling.consentCheckboxTheme(tintColor: tintColor) )
         checkbox.isSelected = false
         checkbox.addTarget(self, action: #selector(didToggleConsent), for: .touchUpInside)
         checkbox.delegate = self
@@ -162,18 +163,13 @@ final class SelfieScanningView: UIView {
         installConstraints()
     }
 
-    convenience init(from viewModel: ViewModel) {
-        self.init()
-        configure(with: viewModel)
-    }
-
     required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
     // MARK: Configure
 
-    func configure(with viewModel: ViewModel) {
+    func configure(with viewModel: ViewModel, analyticsClient: IdentityAnalyticsClient?) {
 
         instructionLabelView.configure(from: viewModel.instructionalLabelViewModel)
 
@@ -183,13 +179,14 @@ final class SelfieScanningView: UIView {
         cameraPreviewView.isHidden = true
         previewContainerView.isHidden = true
         scannedImageScrollView.isHidden = true
-        consentCheckboxButton.isHidden = true
 
         switch viewModel.state {
         case .blank:
+            consentCheckboxButton.isHidden = true
             previewContainerView.isHidden = false
 
         case .videoPreview(let cameraSession, let showFlashAnimation):
+            consentCheckboxButton.isHidden = true
             previewContainerView.isHidden = false
             cameraPreviewView.isHidden = false
             cameraPreviewView.session = cameraSession
@@ -217,9 +214,9 @@ final class SelfieScanningView: UIView {
                 self.consentHandler = consentHandler
                 self.openURLHandler = openURLHandler
             } catch {
-                // TODO(mludowise|IDPROD-2816): Log error if consent can't be rendered.
                 // Keep the consent checkbox hidden and treat this case the same
                 // as if the user did not give consent.
+                analyticsClient?.logGenericError(error: error)
             }
         }
     }
@@ -231,8 +228,13 @@ final class SelfieScanningView: UIView {
 
         // NOTE: `traitCollectionDidChange` is called off the main thread when the app backgrounds
         DispatchQueue.main.async { [weak self] in
-            self?.consentCheckboxButton.theme = Styling.consentCheckboxTheme
+            guard let self = self else { return }
+            self.consentCheckboxButton.theme = Styling.consentCheckboxTheme(tintColor: self.tintColor)
         }
+    }
+
+    override func tintColorDidChange() {
+        consentCheckboxButton.theme = Styling.consentCheckboxTheme(tintColor: tintColor)
     }
 }
 
