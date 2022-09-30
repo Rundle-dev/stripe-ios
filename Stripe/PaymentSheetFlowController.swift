@@ -16,26 +16,10 @@ typealias PaymentOption = PaymentSheet.PaymentOption
 extension PaymentSheet {
     /// Represents the ways a customer can pay in PaymentSheet
     enum PaymentOption {
-        
-        enum LinkConfirmOption {
-            /// Signup for Link then pay
-            case forNewAccount(
-                phoneNumber: PhoneNumber,
-                legalName: String?,
-                paymentMethodParams: STPPaymentMethodParams
-            )
-            
-            /// Confirm intent with paymentDetails
-            case withPaymentDetails(paymentDetails: ConsumerPaymentDetails)
-
-            /// Confirm with Payment Method Params
-            case withPaymentMethodParams(paymentMethodParams: STPPaymentMethodParams)
-        }
-        
         case applePay
         case saved(paymentMethod: STPPaymentMethod)
         case new(confirmParams: IntentConfirmParams)
-        case link(account: PaymentSheetLinkAccount, option: LinkConfirmOption)
+        case link(option: LinkConfirmOption)
     }
 
     /// A class that presents the individual steps of a payment flow
@@ -59,15 +43,8 @@ extension PaymentSheet {
                     label = paymentMethod.paymentSheetLabel
                 case .new(let confirmParams):
                     label = confirmParams.paymentSheetLabel
-                case .link(_, let confirmOption):
-                    switch confirmOption {
-                    case .forNewAccount(_, _, paymentMethodParams: let paymentMethodParams):
-                        label = paymentMethodParams.paymentSheetLabel
-                    case .withPaymentDetails(let paymentDetails):
-                        label = paymentDetails.paymentSheetLabel
-                    case .withPaymentMethodParams(let paymentMethodParams):
-                        label = paymentMethodParams.paymentSheetLabel
-                    }
+                case .link(let option):
+                    label = option.paymentSheetLabel
                 }
             }
         }
@@ -84,13 +61,6 @@ extension PaymentSheet {
             return nil
         }
         
-        /// A valid (passing basic client-side checks) address, or nil.
-        /// 🏗 Under construction
-        @_spi(STP) public var shippingAddressDetails: ShippingAddressDetails? {
-            let shippingAddressDetails = shippingAddressViewController.shippingAddressDetails
-            return shippingAddressDetails
-        }
-
         // MARK: - Private properties
 
         private var intent: Intent
@@ -98,12 +68,6 @@ extension PaymentSheet {
         lazy var paymentHandler: STPPaymentHandler = { STPPaymentHandler(apiClient: configuration.apiClient) }()
 
         private let isLinkEnabled: Bool
-
-        private var linkAccount: PaymentSheetLinkAccount? {
-            didSet {
-                paymentOptionsViewController.linkAccount = linkAccount
-            }
-        }
 
         private lazy var paymentOptionsViewController: ChoosePaymentOptionViewController = {
             let isApplePayEnabled = StripeAPI.deviceSupportsApplePay() && configuration.applePay != nil
@@ -113,7 +77,6 @@ extension PaymentSheet {
                 configuration: configuration,
                 isApplePayEnabled: isApplePayEnabled,
                 isLinkEnabled: isLinkEnabled,
-                linkAccount: linkAccount,
                 delegate: self
             )
             // Workaround to silence a warning in the Catalyst target
@@ -127,46 +90,31 @@ extension PaymentSheet {
             return vc
         }()
         private var presentPaymentOptionsCompletion: (() -> ())? = nil
-        private var walletSelectedPaymentOption: PaymentOption?
+
         /// The desired, valid (ie passed client-side checks) payment option from the underlying payment options VC.
         private var _paymentOption: PaymentOption? {
             guard paymentOptionsViewController.error == nil else {
                 return nil
             }
-            if let walletSelectedPaymentOption = walletSelectedPaymentOption {
-                return walletSelectedPaymentOption
-            } else if let paymentOption = paymentOptionsViewController.selectedPaymentOption {
-                return paymentOption
-            }
-            return nil
+
+            return paymentOptionsViewController.selectedPaymentOption
         }
         
-        // MARK: Shipping
-        private lazy var shippingAddressViewController: ShippingAddressViewController = {
-            let shippingAddressVC = ShippingAddressViewController(configuration: configuration, delegate: self)
-            return shippingAddressVC
-        }()
-        private var presentShippingAddressCompletion: (() -> ())? = nil
-
         // MARK: - Initializer (Internal)
 
         required init(
             intent: Intent,
             savedPaymentMethods: [STPPaymentMethod],
             isLinkEnabled: Bool,
-            linkAccount: PaymentSheetLinkAccount?,
             configuration: Configuration
         ) {
+            AnalyticsHelper.shared.generateSessionID()
             STPAnalyticsClient.sharedClient.addClass(toProductUsageIfNecessary: PaymentSheet.FlowController.self)
             STPAnalyticsClient.sharedClient.logPaymentSheetInitialized(isCustom: true, configuration: configuration)
             self.intent = intent
             self.savedPaymentMethods = savedPaymentMethods
             self.isLinkEnabled = isLinkEnabled
-            self.linkAccount = linkAccount
             self.configuration = configuration
-
-            // Set the current elements theme
-            ElementsUITheme.current = configuration.appearance.asElementsTheme
         }
 
         // MARK: - Public methods
@@ -216,12 +164,11 @@ extension PaymentSheet {
                 configuration: configuration
             ) { result in
                 switch result {
-                case .success(let intent, let paymentMethods, let isLinkEnabled, let linkAccount):
+                case .success(let intent, let paymentMethods, let isLinkEnabled):
                     let manualFlow = FlowController(
                         intent: intent,
                         savedPaymentMethods: paymentMethods,
                         isLinkEnabled: isLinkEnabled,
-                        linkAccount: linkAccount,
                         configuration: configuration)
                     completion(.success(manualFlow))
                 case .failure(let error):
@@ -230,31 +177,6 @@ extension PaymentSheet {
             }
         }
         
-        /// 🏗 Under construction
-        /// Presents a sheet where the customer enters their shipping address
-        /// - Parameter presentingViewController: The view controller that presents the sheet.
-        /// - Parameter completion: This is called after the sheet is dismissed. Use the `shippingAddressDetails` property to get the customer's shipping address details.
-        @_spi(STP) public func presentShippingAddress(
-            from presentingViewController: UIViewController,
-            completion: (() -> ())? = nil
-        ) {
-            guard presentingViewController.presentedViewController == nil else {
-                assertionFailure("presentingViewController is already presenting a view controller")
-                completion?()
-                return
-            }
-            if let completion = completion {
-                presentShippingAddressCompletion = completion
-            }
-
-            let sheet = Self.makeBottomSheetViewController(
-                shippingAddressViewController,
-                configuration: configuration
-            )
-
-            presentingViewController.presentPanModal(sheet, appearance: configuration.appearance)
-        }
-
         /// Presents a sheet where the customer chooses how to pay, either by selecting an existing payment method or adding a new one
         /// Call this when your "Select a payment method" button is tapped
         /// - Parameter presentingViewController: The view controller that presents the sheet.
@@ -272,76 +194,36 @@ extension PaymentSheet {
                 presentPaymentOptionsCompletion = completion
             }
 
-            let presentPaymentOptionsVC = { [self] (linkAccount: PaymentSheetLinkAccount?, justVerifiedLinkOTP: Bool) in
+            let showPaymentOptions: () -> Void = { [weak self] in
+                guard let self = self else { return }
+
                 // Set the PaymentSheetViewController as the content of our bottom sheet
                 let bottomSheetVC = Self.makeBottomSheetViewController(
-                    paymentOptionsViewController,
-                    configuration: configuration,
+                    self.paymentOptionsViewController,
+                    configuration: self.configuration,
                     didCancelNative3DS2: { [weak self] in
                         self?.paymentHandler.cancel3DS2ChallengeFlow()
                     }
                 )
 
-                if linkAccount?.sessionState == .verified {
-                    // hiding this isn't a great solution, it still shows an empty
-                    // modal for a moment but that feels a bit less jarring than one
-                    // with content.
-                    // We can't do the same as complete flow because the bottom sheet
-                    // isn't what's presenting, i.e. it has to be presented first
-                    // (in complete we have already presented the bottom sheet during
-                    // load).
-                    bottomSheetVC.view.isHidden = true
-                    
-                    presentingViewController.presentPanModal(bottomSheetVC, appearance: configuration.appearance) { [self] in
-                        self.presentPayWithLinkController(
-                            from: paymentOptionsViewController,
-                            linkAccount: linkAccount,
-                            intent: intent,
-                            shouldOfferApplePay: justVerifiedLinkOTP,
-                            shouldFinishOnClose: true,
-                            completion: {
-                                // Update the bottom sheet after presenting the Link controller
-                                // to avoid briefly flashing the PaymentSheet in the middle of
-                                // the View Controller transition.
-                                bottomSheetVC.view.isHidden = false
-                            }
-                        )
-                    }
-                } else {
-                    presentingViewController.presentPanModal(bottomSheetVC, appearance: configuration.appearance)
-                }
+                presentingViewController.presentPanModal(bottomSheetVC, appearance: self.configuration.appearance)
             }
-            
 
-            if let linkAccount = linkAccount,
-               case .requiresVerification = linkAccount.sessionState {
-                
-                linkAccount.startVerification { result in
+            if let linkAccount = LinkAccountContext.shared.account,
+               linkAccount.sessionState == .requiresVerification,
+               !linkAccount.hasStartedSMSVerification {
+                let verificationController = LinkVerificationController(linkAccount: linkAccount)
+                verificationController.present(from: presentingViewController) { [weak self] result in
                     switch result {
-                    case .success(let collectOTP):
-                        if collectOTP {
-                            guard linkAccount.redactedPhoneNumber != nil else {
-                                assertionFailure()
-                                presentPaymentOptionsVC(nil, false)
-                                return
-                            }
-
-                            let twoFactorViewController = Link2FAViewController(linkAccount: linkAccount) { (status) in
-                                presentingViewController.dismiss(animated: true, completion: nil)
-                                presentPaymentOptionsVC(linkAccount, status == .completed)
-                            }
-
-                            presentingViewController.present(twoFactorViewController, animated: true)
-                        } else {
-                            presentPaymentOptionsVC(linkAccount, false)
-                        }
-                    case .failure(_):
-                        STPAnalyticsClient.sharedClient.logLink2FAStartFailure()
-                        presentPaymentOptionsVC(nil, false)
+                    case .completed:
+                        self?.paymentOptionsViewController.selectLink()
+                        completion?()
+                    case .canceled, .failed:
+                        showPaymentOptions()
                     }
                 }
             } else {
-                presentPaymentOptionsVC(linkAccount, false)
+                showPaymentOptions()
             }
         }
 
@@ -367,14 +249,20 @@ extension PaymentSheet {
                 intent: intent,
                 paymentOption: paymentOption,
                 paymentHandler: paymentHandler
-            ) { result in
+            ) { [intent, configuration] result in
                 STPAnalyticsClient.sharedClient.logPaymentSheetPayment(
                     isCustom: true,
                     paymentMethod: paymentOption.analyticsValue,
                     result: result,
-                    linkEnabled: self.intent.supportsLink,
-                    activeLinkSession: self.linkAccount?.sessionState == .verified
+                    linkEnabled: intent.supportsLink,
+                    activeLinkSession: LinkAccountContext.shared.account?.sessionState == .verified
                 )
+
+                if case .completed = result, case .link = paymentOption {
+                    // Remember Link as default payment method for users who just created an account.
+                    DefaultPaymentMethodStore.setDefaultPaymentMethod(.link, forCustomer: configuration.customer?.id)
+                }
+
                 completion(result)
             }
         }
@@ -409,20 +297,6 @@ extension PaymentSheet {
 @available(iOSApplicationExtension, unavailable)
 @available(macCatalystApplicationExtension, unavailable)
 extension PaymentSheet.FlowController: ChoosePaymentOptionViewControllerDelegate {
-    func choosePaymentOptionViewControllerDidSelectApplePay(_ choosePaymentOptionViewController: ChoosePaymentOptionViewController) {
-        walletSelectedPaymentOption = .applePay
-        choosePaymentOptionViewController.dismiss(animated: true) {
-            self.presentPaymentOptionsCompletion?()
-        }
-    }
-    
-    func choosePaymentOptionViewControllerDidSelectPayWithLink(_ choosePaymentOptionViewController: ChoosePaymentOptionViewController, linkAccount: PaymentSheetLinkAccount?) {
-        self.presentPayWithLinkController(from: choosePaymentOptionViewController,
-                                          linkAccount: linkAccount,
-                                          intent: intent,
-                                          completion: nil)
-    }
-    
     func choosePaymentOptionViewControllerShouldClose(
         _ choosePaymentOptionViewController: ChoosePaymentOptionViewController
     ) {
@@ -430,46 +304,11 @@ extension PaymentSheet.FlowController: ChoosePaymentOptionViewControllerDelegate
             self.presentPaymentOptionsCompletion?()
         }
     }
-    
-    func presentPayWithLinkController(
-        from presentingController: UIViewController,
-        linkAccount: PaymentSheetLinkAccount?,
-        intent: Intent,
-        shouldOfferApplePay: Bool = false,
-        shouldFinishOnClose: Bool = false,
-        completion: (() -> Void)? = nil
+
+    func choosePaymentOptionViewControllerDidUpdateSelection(
+        _ choosePaymentOptionViewController: ChoosePaymentOptionViewController
     ) {
-        let payWithLinkVC = PayWithLinkViewController(
-            linkAccount: linkAccount,
-            intent: intent,
-            configuration: configuration,
-            selectionOnly: true,
-            shouldOfferApplePay: shouldOfferApplePay,
-            shouldFinishOnClose: shouldFinishOnClose
-        )
-        payWithLinkVC.payWithLinkDelegate = self
-
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            payWithLinkVC.modalPresentationStyle = .formSheet
-        } else {
-            payWithLinkVC.modalPresentationStyle = .overFullScreen
-        }
-
-        presentingController.present(payWithLinkVC, animated: true, completion: completion)
-    }
-    
-    func choosePaymentOptionViewControllerDidUpdateSelection(_ choosePaymentOptionViewController: ChoosePaymentOptionViewController) {
-        walletSelectedPaymentOption = nil
-    }
-}
-
-// MARK: - ShippingAddressViewControllerDelegate
-@available(iOSApplicationExtension, unavailable)
-extension PaymentSheet.FlowController: ShippingAddressViewControllerDelegate {
-    func shouldClose(_ viewController: ShippingAddressViewController) {
-        viewController.dismiss(animated: true) {
-            self.presentShippingAddressCompletion?()
-        }
+        // no-op
     }
 }
 
@@ -503,45 +342,4 @@ class AuthenticationContext: NSObject, PaymentSheetAuthenticationContext {
     func authenticationPresentingViewController() -> UIViewController {
         return presentingViewController
     }
-}
-
-// MARK: - PayWithLinkViewControllerDelegate
-/// :nodoc:
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
-extension PaymentSheet.FlowController: PayWithLinkViewControllerDelegate {
-    func payWithLinkViewControllerDidShouldConfirm(_ payWithLinkViewController: PayWithLinkViewController,
-                                                   intent: Intent,
-                                                   with paymentOption: PaymentOption,
-                                                   completion: @escaping (PaymentSheetResult) -> Void) {
-        assertionFailure("Confirming from Link Modal not supported in Custom Flow")
-    }
-    
-    func payWithLinkViewControllerDidUpdateLinkAccount(_ payWithLinkViewController: PayWithLinkViewController, linkAccount: PaymentSheetLinkAccount?) {
-        self.linkAccount = linkAccount
-    }
-
-    func payWithLinkViewControllerDidCancel(_ payWithLinkViewController: PayWithLinkViewController) {
-        payWithLinkViewController.dismiss(animated: true, completion: nil)
-    }
-    
-    func payWithLinkViewControllerDidFinish(_ payWithLinkViewController: PayWithLinkViewController, result: PaymentSheetResult) {
-        dismissPaymentSheet()
-    }
-    
-    func payWithLinkViewControllerDidSelectPaymentOption(_ payWithLinkViewController: PayWithLinkViewController, paymentOption: PaymentOption) {
-        walletSelectedPaymentOption = paymentOption
-        dismissPaymentSheet()
-    }
-
-    private func dismissPaymentSheet() {
-        if let presentingViewController = self.paymentOptionsViewController.presentingViewController {
-            presentingViewController.dismiss(animated: true) { [weak self] in
-                self?.presentPaymentOptionsCompletion?()
-            }
-        } else {
-            presentPaymentOptionsCompletion?()
-        }
-    }
-    
 }

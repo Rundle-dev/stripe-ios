@@ -19,6 +19,13 @@ extension String.Localized {
         )
     }
 
+    static var add_a_payment_method: String {
+        STPLocalizedString(
+            "Add a payment method",
+            "Text for a button that, when tapped, displays another screen where the customer can add a new payment method"
+        )
+    }
+
     static var ideal_bank: String {
         STPLocalizedString("iDEAL Bank", "iDEAL bank section title for iDEAL form entry.")
     }
@@ -154,25 +161,29 @@ extension String.Localized {
             "Label of a button that when tapped allows the user to select a different form of payment."
         )
     }
-
+    
     static var shipping_address: String {
-        STPLocalizedString("Shipping Address", "Title for shipping address entry section")
+            STPLocalizedString("Shipping Address", "Title for shipping address entry section")
+    }
+
+    static var save_address: String {
+        STPLocalizedString("Save address", "Title for address entry section")
     }
     
     static var enter_address_manually: String {
         STPLocalizedString("Enter address manually", "Text for a button that allows manual entry of an address")
     }
     
-    static func does_not_support_shipping_to(merchantDisplayName: String, country: String) -> String {
+    static func does_not_support_shipping_to(country: String) -> String {
         String(
             format: STPLocalizedString(
-                "%1$@ does not support shipping to %2$@",
+                "Shipping to %@ is not supported.",
                 """
                 Text for an error that is shown when a user selects a shipping address that
                 is not supported by the merchant
                 """
             ),
-            merchantDisplayName, country
+            country
         )
     }
 

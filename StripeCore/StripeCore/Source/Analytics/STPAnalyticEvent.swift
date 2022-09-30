@@ -118,4 +118,11 @@ import Foundation
 
     // MARK: - Link Misc
     case linkAccountLookupFailure = "link.account_lookup.failure"
+
+    // MARK: - LUXE
+    case luxeSerializeFailure = "luxe_serialize_failure"
+    
+    // MARK: Address Element
+    case adddressShow = "mc_address_show"
+    case addressCompleted = "mc_addres_completed"
 }

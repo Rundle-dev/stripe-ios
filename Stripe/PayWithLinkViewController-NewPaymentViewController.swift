@@ -24,7 +24,7 @@ extension PayWithLinkViewController {
         let isAddingFirstPaymentMethod: Bool
 
         private lazy var errorLabel: UILabel = {
-            return ElementsUI.makeErrorLabel()
+            return ElementsUI.makeErrorLabel(theme: LinkUI.appearance.asElementsTheme)
         }()
 
         private let titleLabel: UILabel = {
@@ -33,20 +33,12 @@ extension PayWithLinkViewController {
             label.adjustsFontForContentSizeCategory = true
             label.numberOfLines = 0
             label.textAlignment = .center
-            label.text = STPLocalizedString(
-                "Add a payment method",
-                """
-                Text for a button that, when tapped, displays another screen where the customer
-                can add a new payment method
-                """
-            )
+            label.text = String.Localized.add_a_payment_method
             return label
         }()
 
         private lazy var confirmButton: ConfirmButton = .makeLinkButton(
-            callToAction: context.selectionOnly
-                ? .add(paymentMethodType: addPaymentMethodVC.selectedPaymentMethodType)
-                : context.intent.callToAction,
+            callToAction: context.intent.callToAction,
             // Use a compact button if we are also displaying the Apple Pay button.
             compact: shouldShowApplePayButton
         ) { [weak self] in
@@ -98,7 +90,8 @@ extension PayWithLinkViewController {
         private lazy var addPaymentMethodVC: AddPaymentMethodViewController = {
             var configuration = context.configuration
             configuration.linkPaymentMethodsOnly = true
-
+            configuration.appearance = LinkUI.appearance
+            
             return AddPaymentMethodViewController(
                 intent: context.intent,
                 configuration: configuration,
@@ -328,7 +321,10 @@ extension PayWithLinkViewController.NewPaymentViewController: AddPaymentMethodVi
         if viewController.selectedPaymentMethodType == .linkInstantDebit {
             confirmButton.update(state: .enabled, style: .stripe, callToAction: .add(paymentMethodType: .linkInstantDebit))
         } else {
-            confirmButton.update(state: viewController.paymentOption != nil ? .enabled : .disabled, callToAction: context.selectionOnly ? .add(paymentMethodType: viewController.selectedPaymentMethodType) : context.intent.callToAction)
+            confirmButton.update(
+                state: viewController.paymentOption != nil ? .enabled : .disabled,
+                callToAction: context.intent.callToAction
+            )
         }
         updateErrorLabel(for: nil)
     }

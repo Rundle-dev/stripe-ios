@@ -1,3 +1,8 @@
+## 22.7.0 2022-08-15
+### PaymentSheet
+* [Fixed] Fixed a layout issue on iPad.
+* [Changed] Improved Link support in custom flow (`PaymentSheet.FlowController`).
+
 ## 22.6.0 2022-07-05
 ### PaymentSheet
 * [Added] PaymentSheet now supports Link payment method.
