@@ -204,6 +204,23 @@ class AddPaymentMethodViewController: UIViewController {
             cardDetailsView.deviceOrientation = UIDevice.current.orientation
         }
     }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if configuration.defaultBillingDetails == .init(),
+           let addressSection = paymentMethodFormElement.getAllSubElements()
+            .compactMap({ $0 as? PaymentMethodElementWrapper<AddressSectionElement> }).first?.element {
+            // If we're displaying an AddressSectionElement and we don't have default billing details, update it with the latest shipping details
+            let delegate = addressSection.delegate
+            addressSection.delegate = nil // Stop didUpdate delegate calls to avoid laying out while we're being presented
+            if let newShippingAddress = configuration.shippingDetails()?.address {
+                addressSection.updateBillingSameAsShippingDefaultAddress(.init(newShippingAddress))
+            } else {
+                addressSection.updateBillingSameAsShippingDefaultAddress(.init())
+            }
+            addressSection.delegate = delegate
+        }
+    }
 
     // MARK: - Internal
     
