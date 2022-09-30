@@ -518,6 +518,9 @@ public class STPPaymentOptionsViewController: STPCoreViewController,
         // and we skipped directly to this screen. In this case, a cancel from it is the same as a cancel to us.
         delegate?.paymentOptionsViewControllerDidCancel(self)
     }
+    
+    @objc
+    public func addCardViewControllerScanned(_ addCardViewController: STPAddCardViewController, didInputCardParams number: String, expYear: Int, expMonth: Int) {}
 
     @objc
     public func addCardViewController(

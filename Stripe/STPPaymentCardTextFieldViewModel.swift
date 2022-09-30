@@ -104,6 +104,13 @@ class STPPaymentCardTextFieldViewModel: NSObject {
     @objc dynamic var brand: STPCardBrand {
         return STPCardValidator.brand(forNumber: cardNumber ?? "")
     }
+    
+    @objc dynamic var isScanned: Bool {
+        return STPCardValidator.validationState(
+            forNumber: cardNumber ?? "", validatingCardBrand: true)
+            == .valid && hasCompleteMetadataForCardNumber
+            && validationStateForExpiration() == .valid
+    }
 
     @objc dynamic var isValid: Bool {
         return STPCardValidator.validationState(
