@@ -19,10 +19,11 @@ class FloatingPlaceholderTextFieldView: UIView {
     // MARK: - Views
     
     private let textField: UITextField
+    private let theme: ElementsUITheme
     private lazy var placeholderLabel: UILabel = {
         let label = UILabel()
-        label.textColor = ElementsUITheme.current.colors.placeholderText
-        label.font = ElementsUITheme.current.fonts.subheadline
+        label.textColor = theme.colors.placeholderText
+        label.font = theme.fonts.subheadline
         return label
     }()
     
@@ -37,8 +38,9 @@ class FloatingPlaceholderTextFieldView: UIView {
     
     // MARK: - Initializers
     
-    public init(textField: UITextField) {
+    public init(textField: UITextField, theme: ElementsUITheme = .default) {
         self.textField = textField
+        self.theme = theme
         super.init(frame: .zero)
         isAccessibilityElement = true
         installConstraints()
@@ -104,8 +106,10 @@ class FloatingPlaceholderTextFieldView: UIView {
         // Arrange placeholder
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(placeholderLabel)
-        // Change anchorpoint so scale transforms occur from the left instead of the center
-        placeholderLabel.layer.anchorPoint = CGPoint(x: 0, y: 0.5)
+        // Change anchorPoint so scale transforms occur from the leading edge instead of the center
+        placeholderLabel.layer.anchorPoint = effectiveUserInterfaceLayoutDirection == .leftToRight
+            ? CGPoint(x: 0, y: 0.5)
+            : CGPoint(x: 1, y: 0.5)
         NSLayoutConstraint.activate([
             // Note placeholder's anchorPoint.x = 0 redefines its 'center' to the left
             placeholderLabel.centerXAnchor.constraint(equalTo: textField.leadingAnchor),

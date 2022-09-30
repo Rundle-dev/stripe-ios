@@ -10,7 +10,7 @@ import UIKit
 @_spi(STP) import StripeCore
 @_spi(STP) import StripeUICore
 extension PaymentSheet {
-    public enum PaymentMethodType: Equatable {
+    public enum PaymentMethodType: Equatable, Hashable {
 
         func supportsAddingRequirements() -> [PaymentMethodTypeRequirement] {
             switch(self) {
@@ -31,6 +31,7 @@ extension PaymentSheet {
         case linkInstantDebit
         case link
         case dynamic(String)
+        case UPI
 
         public init(from str: String) {
             switch(str) {
@@ -40,6 +41,8 @@ extension PaymentSheet {
                 self = .USBankAccount
             case STPPaymentMethod.string(from: .link):
                 self = .link
+            case STPPaymentMethod.string(from: .UPI):
+                self  = .UPI
             default:
                 self = .dynamic(str)
             }
@@ -55,6 +58,8 @@ extension PaymentSheet {
                 return STPPaymentMethod.string(from: .link)
             case .linkInstantDebit:
                 return nil
+            case .UPI:
+                return STPPaymentMethod.string(from: .UPI)
             case .dynamic(let str):
                 return str
             }
@@ -68,6 +73,11 @@ extension PaymentSheet {
             }
             assertionFailure()
             return ""
+        }
+
+        var paymentSheetLabel: String {
+            assertionFailure()
+            return "Unknown"
         }
 
         func makeImage(forDarkBackground: Bool = false) -> UIImage {
@@ -189,5 +199,60 @@ extension STPPaymentMethod {
                 return .dynamic(paymentMethodType)
             }
         }
+    }
+}
+extension STPPaymentMethodParams {
+    func paymentSheetPaymentMethodType() -> PaymentSheet.PaymentMethodType {
+        switch(self.type) {
+        case .card:
+            return .card
+        case .USBankAccount:
+            return .USBankAccount
+        case .link:
+            return .link
+        case .linkInstantDebit:
+            return .linkInstantDebit
+        default:
+            if let str = STPPaymentMethod.string(from: self.type) {
+                return .dynamic(str)
+            } else if let rawTypeString = rawTypeString {
+                return .dynamic(rawTypeString)
+            } else {
+                assert(false, "Decoding error for STPPaymentMethodParams")
+                return .dynamic("unknown")
+            }
+        }
+    }
+    var paymentSheetLabel: String {
+        switch type {
+        case .card:
+            return "••••\(card?.last4 ?? "")"
+        default:
+            if self.type == .unknown, let rawTypeString = rawTypeString {
+                let paymentMethodType = PaymentSheet.PaymentMethodType(from: rawTypeString)
+                return paymentMethodType.paymentSheetLabel
+            } else {
+                return label
+            }
+        }
+    }
+}
+
+extension Array where Element == PaymentSheet.PaymentMethodType {
+    func stringList() -> String {
+        var stringList: [String] = []
+        for paymentType in self {
+            let type = PaymentSheet.PaymentMethodType.string(from: paymentType) ?? "unknown"
+            stringList.append(type)
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: stringList, options: []) else {
+            return "[]"
+        }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+    func symmetricDifference(_ other: Array) -> Array where Element == PaymentSheet.PaymentMethodType {
+        let set1 = Set(self)
+        let set2 = Set(other)
+        return Array(set1.symmetricDifference(set2))
     }
 }

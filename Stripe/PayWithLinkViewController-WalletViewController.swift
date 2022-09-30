@@ -66,16 +66,17 @@ extension PayWithLinkViewController {
         }()
 
         private lazy var cvcElement: TextFieldElement = {
-            let configuration = TextFieldElement.CVCConfiguration() { [weak self] in
-                return self?.viewModel.cardBrand ?? .unknown
-            }
+            let configuration = TextFieldElement.CVCConfiguration(cardBrandProvider: {
+                [weak self] in
+                    return self?.viewModel.cardBrand ?? .unknown
+            })
 
-            return TextFieldElement(configuration: configuration)
+            return TextFieldElement(configuration: configuration, theme: LinkUI.appearance.asElementsTheme)
         }()
 
         private lazy var expiryDateElement: TextFieldElement = {
             let configuration = TextFieldElement.ExpiryDateConfiguration()
-            return TextFieldElement(configuration: configuration)
+            return TextFieldElement(configuration: configuration, theme: LinkUI.appearance.asElementsTheme)
         }()
 
         private lazy var expiredCardNoticeView: LinkNoticeView = {
@@ -87,8 +88,8 @@ extension PayWithLinkViewController {
         private lazy var cardDetailsRecollectionSection: SectionElement = {
             let sectionElement = SectionElement(
                 elements: [
-                    SectionElement.MultiElementRow([expiryDateElement, cvcElement])
-                ]
+                    SectionElement.MultiElementRow([expiryDateElement, cvcElement], theme: LinkUI.appearance.asElementsTheme)
+                ], theme: LinkUI.appearance.asElementsTheme
             )
             sectionElement.delegate = self
             return sectionElement
@@ -106,7 +107,7 @@ extension PayWithLinkViewController {
         }()
 
         private lazy var errorLabel: UILabel = {
-            let label = ElementsUI.makeErrorLabel()
+            let label = ElementsUI.makeErrorLabel(theme: LinkUI.appearance.asElementsTheme)
             label.textAlignment = .center
             label.isHidden = true
             return label
@@ -219,8 +220,11 @@ extension PayWithLinkViewController {
                 animated: animated
             )
 
-            expiryDateElement.view.setHiddenIfNecessary(!viewModel.shouldRecollectCardExpiryDate)
-            cvcElement.view.setHiddenIfNecessary(!viewModel.shouldRecollectCardCVC)
+            UIView.performWithoutAnimation {
+                expiryDateElement.view.setHiddenIfNecessary(!viewModel.shouldRecollectCardExpiryDate)
+                cvcElement.view.setHiddenIfNecessary(!viewModel.shouldRecollectCardCVC)
+                cardDetailsRecollectionSection.view.layoutIfNeeded()
+            }
 
             confirmButton.update(
                 state: viewModel.confirmButtonStatus,
@@ -432,6 +436,9 @@ extension PayWithLinkViewController.WalletViewController: LinkPaymentMethodPicke
 
     func paymentMethodPickerDidChange(_ pickerView: LinkPaymentMethodPicker) {
         viewModel.selectedPaymentMethodIndex = pickerView.selectedIndex
+        if viewModel.selectedPaymentMethodIsSupported {
+            pickerView.setExpanded(false, animated: true)
+        }
     }
 
     func paymentMethodPicker(

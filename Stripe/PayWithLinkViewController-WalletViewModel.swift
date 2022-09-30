@@ -74,7 +74,7 @@ extension PayWithLinkViewController {
         var noticeText: String? {
             if shouldRecollectCardExpiryDate {
                 return STPLocalizedString(
-                    "This card has expired. Update it to keep using it or use a different payment.",
+                    "This card has expired. Update your card info or choose a different payment method.",
                     "A text notice shown when the user selects an expired card."
                 )
             }
@@ -142,15 +142,7 @@ extension PayWithLinkViewController {
 
         /// CTA
         var confirmButtonCallToAction: ConfirmButton.CallToActionType {
-            if context.selectionOnly {
-                guard let selectedPaymentMethod = selectedPaymentMethod?.paymentMethodType else {
-                    return .add(paymentMethodType: .link)
-                }
-
-                return .add(paymentMethodType: selectedPaymentMethod)
-            } else {
-                return context.intent.callToAction
-            }
+            return context.intent.callToAction
         }
 
         var confirmButtonStatus: ConfirmButton.Status {

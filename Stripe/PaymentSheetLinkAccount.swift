@@ -24,6 +24,11 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
         case verified
     }
 
+    enum ConsentAction: String {
+        case checkbox = "clicked_checkbox_mobile"
+        case button = "clicked_button_mobile"
+    }
+
     // Dependencies
     let apiClient: STPAPIClient
     let cookieStore: LinkCookieStore
@@ -77,12 +82,14 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
     func signUp(
         with phoneNumber: PhoneNumber,
         legalName: String?,
+        consentAction: ConsentAction,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         signUp(
             with: phoneNumber.string(as: .e164),
             legalName: legalName,
             countryCode: phoneNumber.countryCode,
+            consentAction: consentAction,
             completion: completion
         )
     }
@@ -91,6 +98,7 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
         with phoneNumber: String,
         legalName: String?,
         countryCode: String?,
+        consentAction: ConsentAction,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         guard case .requiresSignUp = sessionState else {
@@ -108,13 +116,15 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
             phoneNumber: phoneNumber,
             legalName: legalName,
             countryCode: countryCode,
+            consentAction: consentAction.rawValue,
             with: apiClient,
             cookieStore: cookieStore
-        ) { [weak self] result in
+        ) { [weak self, email] result in
             switch result {
             case .success(let signupResponse):
                 self?.currentSession = signupResponse.consumerSession
                 self?.publishableKey = signupResponse.preferences.publishableKey
+                self?.cookieStore.write(key: .lastSignupEmail, value: email)
                 completion(.success(()))
             case .failure(let error):
                 completion(.failure(error))
@@ -318,7 +328,7 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
         }
 
         // Delete cookie.
-        cookieStore.delete(key: cookieStore.sessionCookieKey)
+        cookieStore.delete(key: .session)
         
         markEmailAsLoggedOut()
         
@@ -331,7 +341,7 @@ class PaymentSheetLinkAccount: PaymentSheetLinkAccountInfoProtocol {
             return
         }
 
-        cookieStore.write(key: cookieStore.emailCookieKey, value: hashedEmail)
+        cookieStore.write(key: .lastLogoutEmail, value: hashedEmail)
     }
 
 }

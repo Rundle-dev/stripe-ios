@@ -46,6 +46,15 @@ class AddPaymentMethodViewController: UIViewController {
                     PaymentSheet.supportedLinkPaymentMethods : PaymentSheet.supportedPaymentMethods
             )
         }
+
+        let serverFilteredPaymentMethods = PaymentSheet.PaymentMethodType.recommendedPaymentMethodTypes(from: intent).filter({$0 != .USBankAccount && $0 != .link})
+        let paymentTypesFiltered = paymentTypes.filter({$0 != .USBankAccount && $0 != .link})
+        if serverFilteredPaymentMethods != paymentTypesFiltered {
+            let result = serverFilteredPaymentMethods.symmetricDifference(paymentTypes)
+            STPAnalyticsClient.sharedClient.logClientFilteredPaymentMethods(clientFilteredPaymentMethods: result.stringList())
+        } else {
+            STPAnalyticsClient.sharedClient.logClientFilteredPaymentMethodsNone()
+        }
         return paymentTypes
     }()
     var selectedPaymentMethodType: PaymentSheet.PaymentMethodType {
@@ -64,13 +73,9 @@ class AddPaymentMethodViewController: UIViewController {
         return nil
     }
 
-    var linkAccount: PaymentSheetLinkAccount? {
+    var linkAccount: PaymentSheetLinkAccount? = LinkAccountContext.shared.account {
         didSet {
-            // This property changes when PaymentSheet is in the background. We must set the correct
-            // theme before updating the form.
-            configuration.appearance.asElementsTheme.performAsCurrent {
-                updateFormElement()
-            }
+            updateFormElement()
         }
     }
 
@@ -159,13 +164,11 @@ class AddPaymentMethodViewController: UIViewController {
     required init(
         intent: Intent,
         configuration: PaymentSheet.Configuration,
-        delegate: AddPaymentMethodViewControllerDelegate,
-        linkAccount: PaymentSheetLinkAccount? = nil
+        delegate: AddPaymentMethodViewControllerDelegate
     ) {
         self.configuration = configuration
         self.intent = intent
         self.delegate = delegate
-        self.linkAccount = linkAccount
         super.init(nibName: nil, bundle: nil)
         self.view.backgroundColor = configuration.appearance.colors.background
     }
@@ -195,6 +198,12 @@ class AddPaymentMethodViewController: UIViewController {
             paymentMethodTypesView.isHidden = false
         }
         updateUI()
+
+        LinkAccountContext.shared.addObserver(self, selector: #selector(linkAccountChanged(_:)))
+    }
+
+    deinit {
+        LinkAccountContext.shared.removeObserver(self)
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -204,6 +213,23 @@ class AddPaymentMethodViewController: UIViewController {
             cardDetailsView.deviceOrientation = UIDevice.current.orientation
         }
     }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if configuration.defaultBillingDetails == .init(),
+           let addressSection = paymentMethodFormElement.getAllSubElements()
+            .compactMap({ $0 as? PaymentMethodElementWrapper<AddressSectionElement> }).first?.element {
+            // If we're displaying an AddressSectionElement and we don't have default billing details, update it with the latest shipping details
+            let delegate = addressSection.delegate
+            addressSection.delegate = nil // Stop didUpdate delegate calls to avoid laying out while we're being presented
+            if let newShippingAddress = configuration.shippingDetails()?.address {
+                addressSection.updateBillingSameAsShippingDefaultAddress(.init(newShippingAddress))
+            } else {
+                addressSection.updateBillingSameAsShippingDefaultAddress(.init())
+            }
+            addressSection.delegate = delegate
+        }
+    }
 
     // MARK: - Internal
     
@@ -211,6 +237,13 @@ class AddPaymentMethodViewController: UIViewController {
     func setErrorIfNecessary(for error: Error?) -> Bool {
         // TODO
         return false
+    }
+
+    @objc
+    func linkAccountChanged(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.linkAccount = notification.object as? PaymentSheetLinkAccount
+        }
     }
 
     // MARK: - Private

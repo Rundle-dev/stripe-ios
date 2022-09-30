@@ -10,6 +10,7 @@ import Foundation
 import UIKit
 @_spi(STP) import StripeCore
 @_spi(STP) import StripeUICore
+@_spi(STP) import StripeApplePay
 
 @available(iOSApplicationExtension, unavailable)
 @available(macCatalystApplicationExtension, unavailable)
@@ -19,8 +20,7 @@ extension PaymentSheet {
         case success(
             intent: Intent,
             savedPaymentMethods: [STPPaymentMethod],
-            isLinkEnabled: Bool,
-            linkAccount: PaymentSheetLinkAccount?
+            isLinkEnabled: Bool
         )
         case failure(Error)
     }
@@ -51,27 +51,24 @@ extension PaymentSheet {
             }
 
         switch paymentOption {
-        // MARK: Apple Pay
+        // MARK: - Apple Pay
         case .applePay:
-            guard let applePayConfiguration = configuration.applePay,
-                let applePayContext = STPApplePayContext.create(
-                    intent: intent,
-                    merchantName: configuration.merchantDisplayName,
-                    configuration: applePayConfiguration,
-                    completion: completion)
-            else {
-                let message =
-                    "Attempted Apple Pay but it's not supported by the device, not configured, or missing a presenter"
+            guard let applePayContext = STPApplePayContext.create(
+                intent: intent,
+                configuration: configuration,
+                completion: completion
+            ) else {
+                let message = "Attempted Apple Pay but it's not supported by the device, not configured, or missing a presenter"
                 assertionFailure(message)
                 completion(.failed(error: PaymentSheetError.unknown(debugDescription: message)))
                 return
             }
             applePayContext.presentApplePay()
 
-        // MARK: New Payment Method
+        // MARK: - New Payment Method
         case let .new(confirmParams):
             switch intent {
-            // MARK: PaymentIntent
+            // MARK: ↪ PaymentIntent
             case .paymentIntent(let paymentIntent):
                 // The Dashboard app's user key (uk_) cannot pass `paymenMethodParams` ie payment_method_data
                 if configuration.apiClient.publishableKey?.hasPrefix("uk_") ?? false {
@@ -85,6 +82,7 @@ extension PaymentSheet {
                             paymentIntentClientSecret: paymentIntent.clientSecret,
                             paymentMethodID: paymentMethod?.stripeId ?? ""
                         )
+                        paymentIntentParams.shipping = makeShippingParams(for: paymentIntent, configuration: configuration)
                         paymentHandler.confirmPayment(
                             paymentIntentParams,
                             with: authenticationContext,
@@ -93,11 +91,12 @@ extension PaymentSheet {
                 } else {
                     let paymentIntentParams = confirmParams.makeParams(paymentIntentClientSecret: paymentIntent.clientSecret)
                     paymentIntentParams.returnURL = configuration.returnURL
+                    paymentIntentParams.shipping = makeShippingParams(for: paymentIntent, configuration: configuration)
                     paymentHandler.confirmPayment(paymentIntentParams,
                                                   with: authenticationContext,
                                                   completion: paymentHandlerCompletion)
                 }
-            // MARK: SetupIntent
+            // MARK: ↪ SetupIntent
             case .setupIntent(let setupIntent):
                 let setupIntentParams = confirmParams.makeParams(setupIntentClientSecret: setupIntent.clientSecret)
                 setupIntentParams.returnURL = configuration.returnURL
@@ -107,14 +106,15 @@ extension PaymentSheet {
                     completion: paymentHandlerCompletion)
             }
 
-        // MARK: Saved Payment Method
+        // MARK: - Saved Payment Method
         case let .saved(paymentMethod):
             switch intent {
-            // MARK: PaymentIntent
+            // MARK: ↪ PaymentIntent
             case .paymentIntent(let paymentIntent):
                 let paymentIntentParams = STPPaymentIntentParams(clientSecret: paymentIntent.clientSecret, paymentMethodType: paymentMethod.type)
                 paymentIntentParams.returnURL = configuration.returnURL
                 paymentIntentParams.paymentMethodId = paymentMethod.stripeId
+                paymentIntentParams.shipping = makeShippingParams(for: paymentIntent, configuration: configuration)
                 // Overwrite in case payment_method_options was set previously - we don't want to save an already-saved payment method
                 paymentIntentParams.paymentMethodOptions = STPConfirmPaymentMethodOptions()
                 paymentIntentParams.paymentMethodOptions?.setSetupFutureUsageIfNecessary(false, paymentMethodType: paymentMethod.type)
@@ -123,7 +123,7 @@ extension PaymentSheet {
                     paymentIntentParams,
                     with: authenticationContext,
                     completion: paymentHandlerCompletion)
-            // MARK: SetupIntent
+            // MARK: ↪ SetupIntent
             case .setupIntent(let setupIntent):
                 let setupIntentParams = STPSetupIntentConfirmParams(
                     clientSecret: setupIntent.clientSecret, paymentMethodType: paymentMethod.type)
@@ -135,14 +135,15 @@ extension PaymentSheet {
                     completion: paymentHandlerCompletion)
 
             }
-            
-        case .link(let linkAccount, let confirmOption):
+        // MARK: - Link
+        case .link(let confirmOption):
             let confirmWithPaymentMethodParams: (STPPaymentMethodParams) -> Void = { paymentMethodParams in
                 switch intent {
                 case .paymentIntent(let paymentIntent):
                     let paymentIntentParams = STPPaymentIntentParams(clientSecret: paymentIntent.clientSecret)
                     paymentIntentParams.paymentMethodParams = paymentMethodParams
                     paymentIntentParams.returnURL = configuration.returnURL
+                    paymentIntentParams.shipping = makeShippingParams(for: paymentIntent, configuration: configuration)
                     paymentHandler.confirmPayment(
                         paymentIntentParams,
                         with: authenticationContext,
@@ -160,7 +161,10 @@ extension PaymentSheet {
                 }
             }
 
-            let confirmWithPaymentDetails: (ConsumerPaymentDetails) -> Void = { paymentDetails in
+            let confirmWithPaymentDetails: (
+                PaymentSheetLinkAccount,
+                ConsumerPaymentDetails
+            ) -> Void = { linkAccount, paymentDetails in
                 guard let paymentMethodParams = linkAccount.makePaymentMethodParams(from: paymentDetails) else {
                     let error = PaymentSheetError.unknown(debugDescription: "Paying with Link without valid session")
                     completion(.failed(error: error))
@@ -170,7 +174,10 @@ extension PaymentSheet {
                 confirmWithPaymentMethodParams(paymentMethodParams)
             }
 
-            let createPaymentDetailsAndConfirm: (STPPaymentMethodParams) -> Void = { paymentMethodParams in
+            let createPaymentDetailsAndConfirm: (
+                PaymentSheetLinkAccount,
+                STPPaymentMethodParams
+            ) -> Void = { linkAccount, paymentMethodParams in
                 guard linkAccount.sessionState == .verified else {
                     assertionFailure("Creating payment details without a verified session")
                     // Attempt to confirm directly with params
@@ -181,7 +188,7 @@ extension PaymentSheet {
                 linkAccount.createPaymentDetails(with: paymentMethodParams) { result in
                     switch result {
                     case .success(let paymentDetails):
-                        confirmWithPaymentDetails(paymentDetails)
+                        confirmWithPaymentDetails(linkAccount, paymentDetails)
                     case .failure(_):
                         assertionFailure("Failed to create payment details")
                         // Attempt to confirm directly with params
@@ -191,12 +198,15 @@ extension PaymentSheet {
             }
 
             switch confirmOption {
-            case .forNewAccount(let phoneNumber, let legalName, let paymentMethodParams):
-                linkAccount.signUp(with: phoneNumber, legalName: legalName) { result in
+            case .wallet:
+                let linkController = PayWithLinkController(intent: intent, configuration: configuration)
+                linkController.present(completion: completion)
+            case .signUp(let linkAccount, let phoneNumber, let legalName, let paymentMethodParams):
+                linkAccount.signUp(with: phoneNumber, legalName: legalName, consentAction: .checkbox) { result in
                     switch result {
                     case .success():
                         STPAnalyticsClient.sharedClient.logLinkSignupComplete()
-                        createPaymentDetailsAndConfirm(paymentMethodParams)
+                        createPaymentDetailsAndConfirm(linkAccount, paymentMethodParams)
                     case .failure(let error as NSError):
                         STPAnalyticsClient.sharedClient.logLinkSignupFailure()
 
@@ -216,10 +226,10 @@ extension PaymentSheet {
                         }
                     }
                 }
-            case .withPaymentDetails(paymentDetails: let paymentDetails):
-                confirmWithPaymentDetails(paymentDetails)
-            case .withPaymentMethodParams(let paymentMethodParams):
-                createPaymentDetailsAndConfirm(paymentMethodParams)
+            case .withPaymentDetails(let linkAccount, let paymentDetails):
+                confirmWithPaymentDetails(linkAccount, paymentDetails)
+            case .withPaymentMethodParams(let linkAccount, let paymentMethodParams):
+                createPaymentDetailsAndConfirm(linkAccount, paymentMethodParams)
             }
         }
     }
@@ -252,22 +262,30 @@ extension PaymentSheet {
                         )
 
                         loadSpecsPromise.observe { _ in
+                            if case .paymentIntent(let paymentIntent) = intent {
+                               if let payment_method_specs = paymentIntent.allResponseFields["payment_method_specs"] {
+                                   // Over-write the form specs that were already loaded from disk
+                                   let _ = FormSpecProvider.shared.load(from: payment_method_specs)
+                               }
+                            }
                             linkAccountPromise.observe { linkAccountResult in
                                 switch linkAccountResult {
                                 case .success(let linkAccount):
+                                    LinkAccountContext.shared.account = linkAccount
+
                                     completion(.success(
                                         intent: intent,
                                         savedPaymentMethods: savedPaymentMethods,
-                                        isLinkEnabled: intent.supportsLink,
-                                        linkAccount: linkAccount
+                                        isLinkEnabled: intent.supportsLink
                                     ))
                                 case .failure(_):
+                                    LinkAccountContext.shared.account = nil
+
                                     // Move forward without Link
                                     completion(.success(
                                         intent: intent,
                                         savedPaymentMethods: savedPaymentMethods,
-                                        isLinkEnabled: false,
-                                        linkAccount: nil
+                                        isLinkEnabled: false
                                     ))
                                 }
                             }
@@ -293,8 +311,10 @@ extension PaymentSheet {
                 }
                 intentPromise.resolve(with: .paymentIntent(paymentIntent))
             }
-
-            configuration.apiClient.retrievePaymentIntentWithPreferences(withClientSecret: clientSecret) { result in
+            let additionalParameters = ["merchant_support_async": configuration.allowsDelayedPaymentMethods]
+            configuration.apiClient.retrievePaymentIntentWithPreferences(
+                withClientSecret: clientSecret,
+                additionalParameters: additionalParameters) { result in
                 switch result {
                 case .success(let paymentIntent):
                     paymentIntentHandlerCompletionBlock(paymentIntent)
@@ -412,6 +432,8 @@ extension PaymentSheet {
 
         if linkAccountService.hasSessionCookie {
             consumerSessionLookupBlock(nil)
+        } else if let email = linkAccountService.getLastSignUpEmail() {
+            consumerSessionLookupBlock(email)
         } else if let email = configuration.defaultBillingDetails.email {
             consumerSessionLookupBlock(email)
         } else if let customerID = configuration.customer?.id, let ephemeralKey = configuration.customer?.ephemeralKeySecret {
@@ -426,6 +448,8 @@ extension PaymentSheet {
         return promise
     }
     
+    // MARK: - Helper methods
+    
     private static func warnUnactivatedIfNeeded(unactivatedPaymentMethodTypes: [STPPaymentMethodType]) {
         guard !unactivatedPaymentMethodTypes.isEmpty else { return }
         
@@ -435,10 +459,46 @@ extension PaymentSheet {
             """
         print(message)
     }
+    
+    static func makeShippingParams(for paymentIntent: STPPaymentIntent, configuration: PaymentSheet.Configuration) -> STPPaymentIntentShippingDetailsParams? {
+       let params = STPPaymentIntentShippingDetailsParams(paymentSheetConfiguration: configuration)
+        // If a merchant attaches shipping to the PI on their server, the /confirm endpoint will error if we update shipping with a “requires secret key” error message.
+        // To accommodate this, don't attach if our shipping is the same as the PI's shipping
+        guard !isEqual(paymentIntent.shipping, params) else {
+            return nil
+        }
+        return params
+    }
 }
+
+/// A helper method to compare shipping details
+private func isEqual(_ lhs: STPPaymentIntentShippingDetails?, _ rhs: STPPaymentIntentShippingDetailsParams?) -> Bool {
+    guard let lhs = lhs, let rhs = rhs else {
+        // One or both are nil, so they're only equal if they're both nil
+        return lhs == nil && rhs == nil
+    }
+    // Convert lhs to a STPPaymentIntentShippingDetailsAddressParams for ease of comparison
+    let addressParams = STPPaymentIntentShippingDetailsAddressParams(line1: lhs.address?.line1 ?? "")
+    addressParams.line2 = lhs.address?.line2
+    addressParams.city = lhs.address?.city
+    addressParams.state = lhs.address?.state
+    addressParams.postalCode = lhs.address?.postalCode
+    addressParams.country = lhs.address?.country
+
+    let lhsConverted = STPPaymentIntentShippingDetailsParams(address: addressParams, name: lhs.name ?? "")
+    lhsConverted.phone = lhs.phone
+    
+    return rhs == lhsConverted
+}
+
 
 /// Internal authentication context for PaymentSheet magic
 protocol PaymentSheetAuthenticationContext: STPAuthenticationContext {
+    var appearance: PaymentSheet.Appearance { get }
+    
     func present(_ threeDS2ChallengeViewController: UIViewController, completion: @escaping () -> Void)
     func dismiss(_ threeDS2ChallengeViewController: UIViewController)
+    
+    func present(_ viewController: BottomSheetContentViewController)
+    func dismiss(_ viewController: BottomSheetContentViewController)
 }

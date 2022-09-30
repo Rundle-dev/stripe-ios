@@ -120,8 +120,10 @@ extension ConsumerSession {
     class func signUp(
         email: String,
         phoneNumber: String,
+        locale: Locale = .autoupdatingCurrent,
         legalName: String?,
         countryCode: String?,
+        consentAction: String?,
         with apiClient: STPAPIClient = STPAPIClient.shared,
         cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
         completion: @escaping (Result<ConsumerSession.SignupResponse, Error>) -> Void
@@ -129,8 +131,10 @@ extension ConsumerSession {
         apiClient.createConsumer(
             for: email,
             with: phoneNumber,
+            locale: locale,
             legalName: legalName,
             countryCode: countryCode,
+            consentAction: consentAction,
             cookieStore: cookieStore,
             completion: completion
         )
@@ -176,7 +180,7 @@ extension ConsumerSession {
 
     func startVerification(
         type: VerificationSession.SessionType = .sms,
-        locale: String = Locale.autoupdatingCurrent.identifier,
+        locale: Locale = .autoupdatingCurrent,
         with apiClient: STPAPIClient = STPAPIClient.shared,
         cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
         consumerAccountPublishableKey: String?,

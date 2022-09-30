@@ -34,6 +34,19 @@ import PassKit
         didSelectShippingContact contact: PKContact,
         handler: @escaping (_ update: PKPaymentRequestShippingContactUpdate) -> Void
     )
+    
+    /// Optionally configure additional information on your PKPaymentAuthorizationResult.
+    /// This closure will be called after the PaymentIntent or SetupIntent is confirmed, but before
+    /// the Apple Pay sheet has been closed.
+    /// In your implementation, you can configure the PKPaymentAuthorizationResult to add custom fields, such as `orderDetails`.
+    /// See https://developer.apple.com/documentation/passkit/pkpaymentauthorizationresult for all configuration options.
+    /// This method is optional. If you implement this, you must call the handler block with the PKPaymentAuthorizationResult on the main queue.
+    /// WARNING: If you do not call the completion handler, your app will hang until the Apple Pay sheet times out.
+    @objc optional func applePayContext(
+        _ context: STPApplePayContext,
+        willCompleteWithResult authorizationResult: PKPaymentAuthorizationResult,
+        handler: @escaping (_ authorizationResult: PKPaymentAuthorizationResult) -> Void
+    )
 }
 
 /// Implement the required methods of this delegate to supply a PaymentIntent to ApplePayContext and be notified of the completion of the Apple Pay payment.
@@ -200,7 +213,9 @@ public class STPApplePayContext: NSObject, PKPaymentAuthorizationControllerDeleg
     /// The API Client to use to make requests.
     /// Defaults to `STPAPIClient.shared`
     public var apiClient: STPAPIClient = STPAPIClient.shared
-
+    /// ApplePayContext passes this to the /confirm endpoint for PaymentIntents if it did not collect shipping details itself.
+    /// :nodoc:
+    @_spi(STP) public var shippingDetails: StripeAPI.ShippingDetails?
     private weak var delegate: _stpinternal_STPApplePayContextDelegateBase?
     @objc var authorizationController: PKPaymentAuthorizationController?
     // Internal state
@@ -278,19 +293,20 @@ public class STPApplePayContext: NSObject, PKPaymentAuthorizationControllerDeleg
         delegate = nil
     }
 
-    func _shippingDetails(from payment: PKPayment) -> StripeAPI.PaymentIntentParams.ShippingDetails? {
+    func _shippingDetails(from payment: PKPayment) -> StripeAPI.ShippingDetails? {
         guard let address = payment.shippingContact?.postalAddress,
             let name = payment.shippingContact?.name
         else {
-            // The shipping address street and name are required parameters for a valid PaymentIntentParams.ShippingDetails
-            return nil
+            // The shipping address street and name are required parameters for a valid .ShippingDetails
+            // Return `shippingDetails` instead
+            return shippingDetails
         }
 
-        let addressParams = StripeAPI.PaymentIntentParams.ShippingDetails.Address(city: address.city, country: address.isoCountryCode, line1: address.street, postalCode: address.postalCode, state: address.state)
+        let addressParams = StripeAPI.ShippingDetails.Address(city: address.city, country: address.isoCountryCode, line1: address.street, postalCode: address.postalCode, state: address.state)
 
         let formatter = PersonNameComponentsFormatter()
         formatter.style = .long
-        let shippingParams = StripeAPI.PaymentIntentParams.ShippingDetails(
+        let shippingParams = StripeAPI.ShippingDetails(
             address: addressParams, name: formatter.string(from: name), phone: payment.shippingContact?.phoneNumber?.stringValue)
 
         return shippingParams
@@ -310,7 +326,16 @@ public class STPApplePayContext: NSObject, PKPaymentAuthorizationControllerDeleg
         _completePayment(with: payment) { status, error in
             let errors = [STPAPIClient.pkPaymentError(forStripeError: error)].compactMap({ $0 })
             let result = PKPaymentAuthorizationResult(status: status, errors: errors)
-            completion(result)
+            if self.delegate?.responds(
+                    to: #selector(_stpinternal_STPApplePayContextDelegateBase.applePayContext(_:willCompleteWithResult:handler:)))
+                    ?? false
+                {
+                self.delegate?.applePayContext?(self, willCompleteWithResult: result, handler: { newResult in
+                    completion(newResult)
+                })
+            } else {
+                completion(result)
+            }
         }
     }
 
@@ -518,7 +543,11 @@ public class STPApplePayContext: NSObject, PKPaymentAuthorizationControllerDeleg
                                     clientSecret: paymentIntentClientSecret)
                                 paymentIntentParams.paymentMethod = paymentMethod.id
                                 paymentIntentParams.useStripeSdk = true
-                                paymentIntentParams.shipping = self._shippingDetails(from: payment)
+                                // If a merchant attaches shipping to the PI on their server, the /confirm endpoint will error if we update shipping with a “requires secret key” error message.
+                                // To accommodate this, don't attach if our shipping is the same as the PI's shipping
+                                if paymentIntent.shipping != self._shippingDetails(from: payment) {
+                                    paymentIntentParams.shipping = self._shippingDetails(from: payment)
+                                }
 
                                 self.paymentState = .pending  // After this point, we can't cancel
 

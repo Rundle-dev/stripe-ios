@@ -52,7 +52,7 @@ extension STPAPIClient {
                     consumerSession.updateCookie(withStore: cookieStore)
                 case .notFound(_) where cookies != nil:
                     // Delete invalid cookie, if any
-                    cookieStore.delete(key: cookieStore.sessionCookieKey)
+                    cookieStore.delete(key: .session)
                 default:
                     break
                 }
@@ -65,8 +65,10 @@ extension STPAPIClient {
     func createConsumer(
         for email: String,
         with phoneNumber: String,
+        locale: Locale,
         legalName: String?,
         countryCode: String?,
+        consentAction: String?,
         cookieStore: LinkCookieStore,
         completion: @escaping (Result<ConsumerSession.SignupResponse, Error>) -> Void
     ) {
@@ -75,7 +77,8 @@ extension STPAPIClient {
         var parameters: [String: Any] = [
             "request_surface": "ios_payment_element",
             "email_address": email.lowercased(),
-            "phone_number": phoneNumber
+            "phone_number": phoneNumber,
+            "locale": locale.toLanguageTag()
         ]
 
         if let legalName = legalName {
@@ -88,6 +91,10 @@ extension STPAPIClient {
 
         if let cookies = cookieStore.formattedSessionCookies() {
             parameters["cookies"] = cookies
+        }
+
+        if let consentAction = consentAction {
+            parameters["consent_action"] = consentAction
         }
 
         APIRequest<ConsumerSession.SignupResponse>.post(
@@ -166,7 +173,7 @@ extension STPAPIClient {
     func startVerification(
         for consumerSessionClientSecret: String,
         type: ConsumerSession.VerificationSession.SessionType,
-        locale: String,
+        locale: Locale,
         cookieStore: LinkCookieStore,
         consumerAccountPublishableKey: String?,
         completion: @escaping (Result<ConsumerSession, Error>) -> Void
@@ -186,7 +193,7 @@ extension STPAPIClient {
         var parameters: [String: Any] = [
             "credentials": ["consumer_session_client_secret": consumerSessionClientSecret],
             "type": typeString,
-            "locale": locale
+            "locale": locale.toLanguageTag()
         ]
         if let cookies = cookieStore.formattedSessionCookies() {
             parameters["cookies"] = cookies

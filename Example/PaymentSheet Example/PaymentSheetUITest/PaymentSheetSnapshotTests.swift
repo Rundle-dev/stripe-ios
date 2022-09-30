@@ -594,6 +594,26 @@ class PaymentSheetSnapshotTests: FBSnapshotTestCase {
         presentPaymentSheet(darkMode: false)
         verify(paymentSheet.bottomSheetViewController.view!)
     }
+    
+    func testPaymentSheet_LPM_upi_only() {
+        PaymentSheet.supportedPaymentMethods += [.UPI] // TODO: (porter) Remove when UPI launches
+        
+        stubSessions(fileMock: .elementsSessionsPaymentMethod_200,
+                     responseCallback: { data in
+            return self.updatePaymentMethodDetail(data: data, variables: ["<paymentMethods>": "\"upi\"",
+                                                                          "<currency>": "\"inr\""])
+        })
+        stubPaymentMethods(stubRequestCallback: nil, fileMock: .saved_payment_methods_200)
+        stubCustomers()
+
+        preparePaymentSheet(currency: "inr",
+                            override_payment_methods_types: ["upi"],
+                            automaticPaymentMethods: false,
+                            useLink: false)
+        presentPaymentSheet(darkMode: false)
+        verify(paymentSheet.bottomSheetViewController.view!)
+
+    }
     private func updatePaymentMethodDetail(data: Data, variables: [String:String]) -> Data {
         var template = String(data: data, encoding: .utf8)!
         for (templateKey, templateValue) in variables {
@@ -778,7 +798,7 @@ class PaymentSheetSnapshotTests: FBSnapshotTestCase {
                 }
             }
         }
-        wait(for: [presentingExpectation], timeout: 2.0)
+        wait(for: [presentingExpectation], timeout: 10.0)
 
         paymentSheet.bottomSheetViewController.presentationController!.overrideTraitCollection = UITraitCollection(preferredContentSizeCategory: preferredContentSizeCategory)
     }

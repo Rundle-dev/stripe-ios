@@ -71,8 +71,13 @@ class PaymentSheetUITest: XCTestCase {
 
     func testPaymentSheetCustom() throws {
         app.staticTexts["PaymentSheet (Custom)"].tap()
-        let paymentMethodButton = app.staticTexts["Apple Pay"]
-        XCTAssertTrue(paymentMethodButton.waitForExistence(timeout: 60.0))
+        let paymentMethodButton = app.buttons["SelectPaymentMethodButton"]
+
+        let paymentMethodButtonEnabledExpectation = expectation(
+            for: NSPredicate(format: "enabled == true"),
+            evaluatedWith: paymentMethodButton
+        )
+        wait(for: [paymentMethodButtonEnabledExpectation], timeout: 60, enforceOrder: true)
         paymentMethodButton.tap()
 
         let addCardButton = app.buttons["+ Add"]
@@ -96,16 +101,16 @@ class PaymentSheetUITest: XCTestCase {
         loadPlayground(app, settings: [
             "customer_mode": "new",
             "apple_pay": "off", // disable Apple Pay
-            "automatic_payment_methods": "on" // enable automatic payment
+            // This test case is testing a feature not available when Link is on,
+            // so we must manually turn off Link.
+            "automatic_payment_methods": "off",
+            "link": "off"
         ])
 
         var paymentMethodButton = app.buttons["Select Payment Method"]
         XCTAssertTrue(paymentMethodButton.waitForExistence(timeout: 60.0))
         paymentMethodButton.tap()
         try! fillCardData(app)
-
-        // This test won't function with Link enabled
-        try XCTSkipIf(app.buttons["Pay with Link"].isHittable, "This test does not work with Link enabled as an automatic payment method")
 
         // toggle save this card on and off
         var saveThisCardToggle = app.switches["Save this card for future Example, Inc. payments"]
@@ -128,7 +133,7 @@ class PaymentSheetUITest: XCTestCase {
         // Complete payment
         app.buttons["Continue"].tap()
         app.buttons["Checkout (Custom)"].tap()
-        var successText = app.alerts.staticTexts["success!"]
+        var successText = app.alerts.staticTexts["Success!"]
         XCTAssertTrue(successText.waitForExistence(timeout: 10.0))
         app.alerts.scrollViews.otherElements.buttons["OK"].tap()
 
@@ -147,7 +152,7 @@ class PaymentSheetUITest: XCTestCase {
         // Complete payment
         app.buttons["Continue"].tap()
         app.buttons["Checkout (Custom)"].tap()
-        successText = app.alerts.staticTexts["success!"]
+        successText = app.alerts.staticTexts["Success!"]
         XCTAssertTrue(successText.waitForExistence(timeout: 10.0))
         app.alerts.scrollViews.otherElements.buttons["OK"].tap()
 
@@ -228,7 +233,7 @@ class PaymentSheetUITest: XCTestCase {
         iDEAL.tap()
 
         XCTAssertFalse(payButton.isEnabled)
-        let name = app.textFields["Name"]
+        let name = app.textFields["Full name"]
         name.tap()
         name.typeText("John Doe")
         name.typeText(XCUIKeyboardKey.return.rawValue)
@@ -262,7 +267,7 @@ class PaymentSheetUITest: XCTestCase {
         eps.tap()
 
         XCTAssertFalse(payButton.isEnabled)
-        let name = app.textFields["Name"]
+        let name = app.textFields["Full name"]
         name.tap()
         name.typeText("John Doe")
         name.typeText(XCUIKeyboardKey.return.rawValue)
@@ -296,7 +301,7 @@ class PaymentSheetUITest: XCTestCase {
         giro.tap()
 
         XCTAssertFalse(payButton.isEnabled)
-        let name = app.textFields["Name"]
+        let name = app.textFields["Full name"]
         name.tap()
         name.typeText("John Doe")
         name.typeText(XCUIKeyboardKey.return.rawValue)
@@ -325,7 +330,7 @@ class PaymentSheetUITest: XCTestCase {
         p24.tap()
 
         XCTAssertFalse(payButton.isEnabled)
-        let name = app.textFields["Name"]
+        let name = app.textFields["Full name"]
         name.tap()
         name.typeText("John Doe")
         name.typeText(XCUIKeyboardKey.return.rawValue)
@@ -425,7 +430,7 @@ class PaymentSheetUITest: XCTestCase {
         let continueButton = app.buttons["Continue"]
         XCTAssertFalse(continueButton.isEnabled)
 
-        let name = app.textFields["Name"]
+        let name = app.textFields["Full name"]
         name.tap()
         name.typeText("John Doe")
         name.typeText(XCUIKeyboardKey.return.rawValue)
@@ -453,6 +458,56 @@ class PaymentSheetUITest: XCTestCase {
         XCTAssertTrue(app.textViews[expectDefaultSelectionOn ? unselectedMandate : selectedMandate].waitForExistence(timeout: 5))
 
         // no pay button tap because linked account is stubbed/fake in UI test
+    }
+    
+    func testUPIPaymentMethod() throws {
+        loadPlayground(app, settings: [
+            "customer_mode": "new",
+            "merchant_country_code": "IN",
+            "currency": "INR"
+        ])
+
+        app.buttons["Checkout (Complete)"].tap()
+
+        let payButton = app.buttons["Pay ₹50.99"]
+        guard let upi = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "UPI") else {
+            XCTFail()
+            return
+        }
+        upi.tap()
+
+        XCTAssertFalse(payButton.isEnabled)
+        let vpa = app.textFields["VPA number"]
+        vpa.tap()
+        vpa.typeText("payment.success@stripeupi")
+        vpa.typeText(XCUIKeyboardKey.return.rawValue)
+
+        payButton.tap()
+    }
+    
+    func testUPIPaymentMethod_invalidVPA() throws {
+        loadPlayground(app, settings: [
+            "customer_mode": "new",
+            "merchant_country_code": "IN",
+            "currency": "INR"
+        ])
+
+        app.buttons["Checkout (Complete)"].tap()
+
+        let payButton = app.buttons["Pay ₹50.99"]
+        guard let upi = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "UPI") else {
+            XCTFail()
+            return
+        }
+        upi.tap()
+
+        XCTAssertFalse(payButton.isEnabled)
+        let vpa = app.textFields["VPA number"]
+        vpa.tap()
+        vpa.typeText("payment.success")
+        vpa.typeText(XCUIKeyboardKey.return.rawValue)
+
+        XCTAssertFalse(payButton.isEnabled)
     }
 }
 
@@ -600,6 +655,20 @@ extension PaymentSheetUITest {
 
         let okButton = app.alerts.buttons["OK"]
         okButton.tap()
+
+        // Reload to verify that the last signup email is remembered.
+        reload(app)
+        app.buttons["Checkout (Complete)"].tap()
+
+        // Confirm that that verification prompt appears
+        // and that we are able to verify the session.
+        let codeField = app.descendants(matching: .any)["Code field"]
+        XCTAssert(codeField.waitForExistence(timeout: 10))
+        codeField.tap()
+        app.typeTextWithKeyboard("000000")
+
+        let modal2 = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+        XCTAssertTrue(modal2.waitForExistence(timeout: 10))
     }
 
     func testLinkSignIn() throws {
@@ -615,6 +684,32 @@ extension PaymentSheetUITest {
         XCTAssertTrue(payWithLinkButton.waitForExistence(timeout: 10))
         payWithLinkButton.tap()
 
+        try loginAndPay()
+    }
+
+    // MARK: Custom Flow
+
+    func testLinkCustomFlow() throws {
+        loadPlayground(app, settings: [
+            "customer_mode": "new",
+            "automatic_payment_methods": "off",
+            "link": "on"
+        ])
+
+        let paymentMethodButton = app.buttons["Select Payment Method"]
+        XCTAssertTrue(paymentMethodButton.waitForExistence(timeout: 10.0))
+        paymentMethodButton.tap()
+
+        let addCardButton = app.buttons["Link"]
+        XCTAssertTrue(addCardButton.waitForExistence(timeout: 10.0))
+        addCardButton.tap()
+
+        app.buttons["Checkout (Custom)"].tap()
+
+        try loginAndPay()
+    }
+
+    private func loginAndPay() throws {
         let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
         XCTAssertTrue(modal.waitForExistence(timeout: 10))
 
@@ -632,7 +727,7 @@ extension PaymentSheetUITest {
         let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
         if paymentMethodPicker.waitForExistence(timeout: 10) {
             paymentMethodPicker.tap()
-            paymentMethodPicker.buttons["Add new payment method"].tap()
+            paymentMethodPicker.buttons["Add a payment method"].tap()
         }
 
         try fillCardData(app, container: modal)
@@ -649,5 +744,4 @@ extension PaymentSheetUITest {
         let okButton = app.alerts.buttons["OK"]
         okButton.tap()
     }
-
 }

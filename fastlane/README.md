@@ -31,10 +31,10 @@ Generate new localized screenshots
 
 
 
-### ios ci_builds
+### ios build_extras
 
 ```sh
-[bundle exec] fastlane ios ci_builds
+[bundle exec] fastlane ios build_extras
 ```
 
 
@@ -251,6 +251,14 @@ Generate new localized screenshots
 
 ```sh
 [bundle exec] fastlane ios objc_symbol_check
+```
+
+
+
+### ios check_changelog
+
+```sh
+[bundle exec] fastlane ios check_changelog
 ```
 
 
